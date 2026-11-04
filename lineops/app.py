@@ -217,6 +217,7 @@ def create_app(data_dir: str | Path) -> FastAPI:
         c = connect(path)
         try:
             careers.sync_settings(core, c)
+            careers.mirror_identity(c, u)                 # para as chaves estrangeiras da carreira (ACARS, PIREP)
             try:
                 frota_ref.ensure(c, u["career"])          # a lista de frota que você mandou (uma vez por versão)
             except Exception:                             # noqa: BLE001

@@ -376,7 +376,9 @@ def test_careers_and_engine_over_http(cl):
     assert me["career"]["code"] == "GLO" and "GOL Linhas" in me["disclaimer"]
     m = cl.get("/api/motor").json()
     assert m["options"]["types"] and m["status"]["engine"].startswith("AeroScale")
-    j = cl.post("/api/motor/gerar", headers=H, json={"kind": "semanal", "start_date": "2026-10-22", "base": "SBGR", "icao_type": "B738", "seed": 5}).json()
+    # sem reserva: nessa semana a reserva sorteada (24 a 27/10) e as folgas deixam um dia só, e ele não fecha nas regras
+    j = cl.post("/api/motor/gerar", headers=H, json={"kind": "semanal", "start_date": "2026-10-22", "base": "SBGR", "icao_type": "B738", "seed": 5,
+                                                    "reserve_blocks": 0}).json()
     import time
     for _ in range(200):
         r = cl.get(f"/api/motor/tarefas/{j['id']}").json()
@@ -432,7 +434,7 @@ def test_backup_panel_upload_and_scheduled_restore(cl, tmp_path):
     up = cl.post("/api/backups/enviar", content=raw, headers=H)
     assert up.status_code == 200 and up.json()["name"].endswith("-enviado.zip")
     assert cl.post("/api/backups/enviar", content=b"lixo", headers=H).status_code == 400
-    assert cl.post("/api/backups/../x/restaurar", headers=H).status_code == 404
+    assert cl.post("/api/backups/../x/restaurar", headers=H).status_code in (404, 405)   # o caminho é normalizado: nada fora da pasta
     r = cl.post(f"/api/backups/{b['name']}/restaurar", headers=H)
     assert r.status_code == 200 and cl.get("/api/backups-info").json()["pending_restore"] == b["name"]
     assert cl.delete("/api/backups/restaurar", headers=H).json()["scheduled"] is False

@@ -94,7 +94,8 @@ def test_http_flow_with_file_upload(cl, tmp_path):
     assert cl.post(f"/api/flights/{f['id']}/ofp/file", headers=H, content=b"nao e json").status_code == 400
     c = cl.get(f"/api/flight-center/{f['id']}").json()
     etapa = {s["key"]: s for s in c["stages"]}["despacho"]
-    assert etapa["state"] == "PRONTO" and "SBNF" in etapa["detail"]
+    # desde a 2.x o despacho é conjunto: com o OFP, o DOV confere e libera, e só fica PRONTO com a sua assinatura
+    assert etapa["state"] in ("ATENCAO", "PRONTO") and "SBNF" in etapa["detail"] and "OFP" in etapa["detail"]
     assert c["ofp"]["data"]["est_tow"] == 64165
     g = cl.get(f"/api/flights/{f['id']}/ofp").json()
     assert len(g["history"]) == 1

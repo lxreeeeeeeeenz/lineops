@@ -208,6 +208,30 @@ def sync_settings(core, c) -> None:
                 c.execute("DELETE FROM setting WHERE key=?", (k,))
 
 
+def mirror_identity(c, u: dict) -> None:
+    """Login e tokens moram no núcleo (lineops.db); a carreira tem tabelas que apontam para eles (acars_session.token_id,
+    flight.pilot_id, pirep.reviewed_by). Sem a linha na carreira, a chave estrangeira falhava: o ACARS não abria sessão
+    com token criado depois da 2.0. Aqui vai só um espelho para a referência valer: sem senha e sem o hash do token
+    (quem autentica é sempre o núcleo)."""
+    uid, tid = u.get("id"), u.get("token_id")
+    if uid is None:
+        return
+    need_u = not c.execute("SELECT 1 FROM user WHERE id=?", (uid,)).fetchone()
+    need_t = tid is not None and not c.execute("SELECT 1 FROM auth_token WHERE id=?", (tid,)).fetchone()
+    if not (need_u or need_t):
+        return
+    with tx(c):
+        if need_u:
+            c.execute("INSERT OR IGNORE INTO user(id, username, pw_hash, display_name, pilot_code, created_at) VALUES (?,?,?,?,?,?)",
+                      (uid, f"{u.get('username')}#{uid}" if c.execute("SELECT 1 FROM user WHERE username=?", (u.get("username"),)).fetchone()
+                       else u.get("username"), "!espelho-do-nucleo", u.get("display_name") or u.get("username") or "piloto",
+                       u.get("pilot_code") or "GOL001", u.get("created_at") or now_iso()))
+        if need_t:
+            c.execute("INSERT OR IGNORE INTO auth_token(id, user_id, kind, name, token_hash, created_at) VALUES (?,?,?,?,?,?)",
+                      (tid, uid, u.get("kind") if u.get("kind") in ("session", "api") else "api", "espelho do núcleo",
+                       f"!espelho:{tid}", now_iso()))
+
+
 # ------------------------------------------------------------------ escolha
 def list_careers(data_dir: Path, core) -> list[dict]:
     have = {r["code"]: r for r in rows(core.execute("SELECT * FROM career"))}

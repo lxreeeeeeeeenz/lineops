@@ -112,7 +112,7 @@ def test_client_restart_resumes_state(server, tmp_path):
 
 
 def test_server_rejects_blocked_aircraft_for_client(server, tmp_path):
-    ac = server["web"].get("/api/aircraft").json()[0]
+    ac = next(a for a in server["web"].get("/api/aircraft").json() if a["registration"] == "PR-TST")   # a frota de referência também está lá
     server["web"].post(f"/api/aircraft/{ac['id']}/discrepancies", json={"title": "Fogo no motor 1", "restriction": "BLOQUEIA"})
     from lineops_acars.client import ApiError
     r = Runner(Api(server["base"], server["token"]), sims.Replay(tmp_path / "x"), server["flight"], sim_label="REPLAY", state_dir=tmp_path / "st", log=lambda *_: None)
