@@ -348,7 +348,7 @@ def create_app(data_dir: str | Path) -> FastAPI:
                 "pending_pireps": conn.execute("SELECT COUNT(*) FROM pirep WHERE state='PENDING'").fetchone()[0],
                 "fleet": {"total": conn.execute("SELECT COUNT(*) FROM aircraft WHERE active=1").fetchone()[0]},
                 "roster": {"legs": conn.execute("SELECT COUNT(*) FROM roster_leg WHERE removed_batch IS NULL").fetchone()[0], "last_import": imp},
-                "disclaimer": DISCLAIMER}
+                "disclaimer": careers.disclaimer(u["career"])}           # o aviso da companhia da sessão, como no /api/me
 
     # ----------------------------------------------------------------- jornada
     @app.get("/api/today")
