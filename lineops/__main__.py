@@ -100,6 +100,8 @@ def main(argv=None):
     i.add_argument("path")
     i.add_argument("--dry-run", action="store_true")
     sub.add_parser("create-user", help="cria o usuário inicial pela linha de comando")
+    rs = sub.add_parser("redefinir-senha", help="troca a senha esquecida de um usuário (nada é apagado)")
+    rs.add_argument("--usuario", default=None)
     rc = sub.add_parser("recopiar-golops", help="traz de novo os dados do GolOps antigo (a pasta atual da LineOps é guardada, não apagada)")
     rc.add_argument("--port", type=int, default=8787)
     rc.add_argument("--sim", action="store_true", help="não pergunta")
@@ -177,6 +179,26 @@ def main(argv=None):
         st = import_backup(c, a.path, dry_run=a.dry_run, airline=careers.DEFAULT)
         for k, v in st.items():
             print(f"{k}: {v}")
+    elif a.cmd == "redefinir-senha":
+        from . import senha
+        c = connect(db_path); migrate(c)
+        users = senha.usernames(c)
+        if not users:
+            sys.exit("Ainda não há usuário nesta instalação: abra a LineOps e crie no primeiro acesso.")
+        u = a.usuario or (users[0] if len(users) == 1 else None)
+        if not u:
+            print("Usuários desta instalação: " + ", ".join(users))
+            u = input("Qual usuário? ").strip()
+        print(f"Trocando a senha de {u} (dados em {data}).")
+        p1 = getpass.getpass("Senha nova (mín. 8): ")
+        p2 = getpass.getpass("Repita a senha nova: ")
+        if p1 != p2:
+            sys.exit("As senhas não conferem. Nada mudou.")
+        try:
+            r = senha.reset_password(c, u, p1, via="cli")
+        except Exception as e:                                      # noqa: BLE001
+            sys.exit(getattr(e, "message", str(e)))
+        print(f"Pronto: senha de {r['username']} trocada. Sessões abertas encerradas: {r['sessions_closed']}. Entre com a senha nova.")
     elif a.cmd == "create-user":
         c = connect(db_path); migrate(c)
         if c.execute("SELECT COUNT(*) FROM user").fetchone()[0]:

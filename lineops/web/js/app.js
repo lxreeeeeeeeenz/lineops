@@ -191,6 +191,34 @@ let lastHash = "";
 addEventListener("hashchange", render);
 
 /* ───────────────────────── entrada ───────────────────────── */
+/* senha esquecida: código no arquivo REDEFINIR-SENHA.txt da pasta de dados (só no PC da instalação) */
+function forgotDialog(user0) {
+  const u = h("input", {autocomplete: "username", value: user0 || "", placeholder: "seu usuário"});
+  const code = h("input", {inputmode: "numeric", autocomplete: "one-time-code", maxlength: 6, placeholder: "6 dígitos", class: "mono"});
+  const p1 = h("input", {type: "password", autocomplete: "new-password", minlength: 8});
+  const p2 = h("input", {type: "password", autocomplete: "new-password", minlength: 8});
+  const msg = h("div");
+  const ask = async () => {
+    try {
+      const r = await post("/api/senha/codigo");
+      put(msg, note("go", "ok", "Código gerado. Ele está no arquivo ", h("b", {}, "REDEFINIR-SENHA.txt"), " da pasta de dados da LineOps",
+        h("div", {class: "mono", style: "font-size:12px;margin-top:4px;word-break:break-all"}, r.file),
+        "No Windows o arquivo já abre sozinho. Vale 10 minutos."));
+      code.focus();
+    } catch (x) { put(msg, note("stop", "alerta", x.message)); }
+  };
+  dialog("Esqueci a senha", "A senha não fica guardada em lugar nenhum (só um hash), então ela não se recupera: você cria uma nova. Nada da sua carreira é apagado.",
+    h("div", {}, h("button", {class: "btn ghost sm", type: "button", onclick: ask}, "Gerar código"), msg,
+      field("Usuário", u), field("Código do arquivo", code), field("Senha nova (mín. 8)", p1), field("Repita a senha nova", p2)),
+    [closeBtn, {label: "Trocar a senha", keep: true, fn: async () => {
+      if (p1.value !== p2.value) { put(msg, note("stop", "alerta", "As senhas não conferem.")); return false; }
+      try {
+        await post("/api/senha/redefinir", {username: u.value.trim(), code: code.value.trim(), password: p1.value});
+        document.getElementById("dlg").close();
+        toast("Senha trocada. Entre com a senha nova.");
+      } catch (x) { put(msg, note("stop", "alerta", x.message)); }
+    }}]);
+}
 function showAuth(setup) {
   me = null; booted = false;
   const u = h("input", {autocomplete: "username", required: true, minlength: 3, placeholder: "comandante"});
@@ -204,7 +232,9 @@ function showAuth(setup) {
   }},
     h("h2", {}, setup ? "Primeiro acesso" : "Entrar"),
     h("p", {class: "muted", style: "font-size:13.5px"}, setup ? "Crie o usuário desta instalação. A senha precisa de pelo menos 8 caracteres." : "Use o usuário criado nesta instalação."),
-    err, field("Usuário", u), field("Senha", p), h("button", {class: "btn wide", type: "submit"}, setup ? "Criar e entrar" : "Entrar"));
+    err, field("Usuário", u), field("Senha", p), h("button", {class: "btn wide", type: "submit"}, setup ? "Criar e entrar" : "Entrar"),
+    setup ? null : h("p", {style: "margin:12px 0 0;text-align:center;font-size:13px"},
+      h("a", {href: "#", onclick: e => { e.preventDefault(); forgotDialog(u.value.trim()); }}, "Esqueci a senha")));
   const logo = brandMark(30);
   document.getElementById("app").replaceChildren(h("div", {class: "auth"}, h("div", {class: "box"},
     h("div", {class: "brand"}, logo, h("span", {}, "Line", h("b", {}, "Ops"))),

@@ -10,6 +10,18 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 2.5.3: esqueci a senha
+
+* A LineOps não tem senha padrão: cada instalação cria o usuário no primeiro acesso e guarda só o hash (scrypt). A senha
+  não se recupera, se troca, e nada da carreira é apagado.
+* **No app:** na tela de entrada, **Esqueci a senha** → **Gerar código**. O código de 6 dígitos vai para o arquivo
+  `REDEFINIR-SENHA.txt` da pasta de dados (no Windows ele abre sozinho). Digite o código e a senha nova. Vale 10 minutos
+  e 5 tentativas, e só funciona no próprio computador (pedido vindo da rede é recusado).
+* **Pela linha de comando:** `redefinir-senha.bat` (ou `python -m lineops redefinir-senha [--usuario NOME]`).
+* Trocar a senha encerra as sessões abertas desse usuário. O token do ACARS continua valendo.
+* Correções da 2.5.2 achadas pelo CI: o cliente ACARS abre sessão de novo (antes dava erro 500 na carreira), e o painel
+  mostra o aviso de independência da companhia escolhida.
+
 ## Novidades da 2.5.2
 
 * **Código do piloto por companhia.** Embaixo do nome aparecia sempre GOL001, em qualquer modo. O número fica e o prefixo
@@ -308,7 +320,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-2.5.2.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-2.5.3.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

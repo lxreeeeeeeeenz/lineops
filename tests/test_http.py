@@ -519,3 +519,15 @@ def test_avatar_for_cmdt079_over_http(cl):
     assert me["avatar"] == "/api/me/avatar"
     r = cl.get("/api/me/avatar")
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"
+
+
+def test_forgot_password_over_http(cl, tmp_path):
+    setup_user(cl)
+    assert cl.post("/api/senha/codigo").status_code == 403                          # sem o cabeçalho da tela: CSRF
+    r = cl.post("/api/senha/codigo", headers=H).json()
+    from pathlib import Path
+    code = next(ln.strip() for ln in Path(r["file"]).read_text(encoding="utf-8").splitlines() if ln.strip().isdigit())
+    assert cl.post("/api/senha/redefinir", headers=H, json={"username": "piloto", "code": "x", "password": "nova-senha-123"}).status_code == 400
+    assert cl.post("/api/senha/redefinir", headers=H, json={"username": "piloto", "code": code, "password": "nova-senha-123"}).json()["ok"]
+    assert cl.get("/api/me").status_code == 401                                      # a sessão antiga foi encerrada
+    assert cl.post("/api/login", json={"username": "piloto", "password": "nova-senha-123"}).status_code == 200

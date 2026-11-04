@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, exportar, fleet, frota_ref, pernoite, legacy, flights, journey,
+from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
                careers, carreira, enroute, equipe, externos, feed, ivao, motor, notify, stay, tripulacao, loadsheet as ls_mod, logs, validity, manual, network, ofp as ofp_mod, payroll, pireps, rules, security, troca, posicao, visao)
 from .db import audit, connect, migrate, now_iso, one, pending, rows, tx
 from .errors import FGVError, NotFound
@@ -267,6 +267,29 @@ def create_app(data_dir: str | Path) -> FastAPI:
             audit(conn, u["id"], "user.login", "user", u["id"], {"ip": request.client.host if request.client else None})
         _set_cookie(response, tok)
         return {"ok": True}
+
+    # ----------------------------------------------------------------- senha esquecida (só no próprio PC)
+    def _local_only(request: Request):
+        if not senha.is_local(request.client.host if request.client else None):
+            raise FGVError("Por segurança, a senha só se redefine no computador onde a LineOps está instalada.",
+                           code="so_local", status=403)
+        if request.headers.get("x-requested-with") != "lineops":
+            raise FGVError("Requisição bloqueada (proteção CSRF).", code="csrf", status=403)
+
+    @app.post("/api/senha/codigo")
+    def password_code(request: Request, core=Depends(get_core)):
+        _local_only(request)
+        if throttle.check("senha:codigo"):
+            raise FGVError("Aguarde um pouco antes de pedir outro código.", code="muitas_tentativas", status=429)
+        throttle.fail("senha:codigo")                     # no máximo alguns códigos seguidos
+        return senha.start_local(core, data_dir)
+
+    @app.post("/api/senha/redefinir")
+    def password_reset(request: Request, b: dict = Body(...), core=Depends(get_core)):
+        _local_only(request)
+        if set(b) - {"username", "code", "password"}:
+            raise FGVError("Campos desconhecidos.", code="campo_invalido")
+        return senha.finish_local(core, data_dir, b.get("username") or "", str(b.get("code") or ""), b.get("password") or "")
 
     def _set_cookie(response, tok):
         response.set_cookie(COOKIE, tok, httponly=True, samesite="strict", max_age=security.SESSION_DAYS * 86400, path="/")
