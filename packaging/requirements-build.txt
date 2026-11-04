@@ -1,0 +1,5 @@
+# Só para gerar o instalador no Windows (build.bat). Quem usa o app instalado não precisa de nada disso.
+pyinstaller>=6.6
+pywebview>=5.1
+pystray>=0.19.5
+Pillow>=10.3

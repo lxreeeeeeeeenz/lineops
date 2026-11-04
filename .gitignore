@@ -1,0 +1,13 @@
+# dados do usuário e coisas geradas: nunca vão para o repositório
+dados/
+/dist/
+/build/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+/*.png
+/*.zip
+.venv/
+venv*/
+packaging/Output/

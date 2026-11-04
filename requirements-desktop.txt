@@ -1,0 +1,5 @@
+# Para rodar o app de janela a partir do código (python -m lineops desktop). O instalador já traz tudo.
+-r requirements.txt
+pywebview>=5.1; sys_platform == "win32"
+pystray>=0.19.5
+Pillow>=10.3

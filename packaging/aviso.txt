@@ -1,0 +1,10 @@
+﻿LineOps — centro de operações pessoal de simulação aérea
+
+Projeto pessoal e independente, SEM afiliação, patrocínio ou endosso da GOL Linhas Aéreas.
+Todo conteúdo é simulado e NÃO é documentação operacional. Os personagens da equipe são fictícios.
+
+Seus dados ficam em %LOCALAPPDATA%\LineOps\dados e NÃO são apagados ao desinstalar.
+Faça backups (ícone da bandeja → Fazer backup agora) e guarde uma cópia fora deste computador.
+
+O LineOps abre numa janela própria usando o WebView2 da Microsoft (já vem no Windows 10 atualizado e no 11).
+Sem ele, o LineOps abre no seu navegador padrão.

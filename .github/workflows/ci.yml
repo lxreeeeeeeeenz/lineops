@@ -1,0 +1,26 @@
+# Testes em todo push e pull request: Windows (onde a LineOps roda de verdade) e Linux.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  testes:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Dependências
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Testes (suíte inteira, com os de HTTP)
+        run: python -m pytest tests -q -p no:cacheprovider -rf

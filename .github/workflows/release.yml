@@ -1,0 +1,59 @@
+# Tag v2.5.2 (ou qualquer vX.Y.Z) → testes, LineOps.exe, ACARS e o instalador, publicados no Releases.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  instalador:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Dependências
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt -r packaging/requirements-build.txt
+      - name: Versão
+        id: ver
+        shell: bash
+        run: |
+          v=$(python packaging/set_version.py)
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF#refs/tags/v}" != "$v" ]]; then
+            echo "A tag (${GITHUB_REF#refs/tags/}) não bate com lineops/__init__.py ($v)"; exit 1
+          fi
+      - name: Testes
+        run: python -m pytest tests -q -p no:cacheprovider -rf
+      - name: PyInstaller
+        run: |
+          python -m PyInstaller --noconfirm --clean --distpath dist --workpath build packaging/lineops.spec
+          python -m PyInstaller --noconfirm --clean --distpath dist --workpath build packaging/acars.spec
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.v }}" packaging/installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Hash
+        shell: pwsh
+        run: Get-FileHash dist/LineOps-Setup-*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Out-File -Encoding ascii dist/SHA256SUMS.txt
+      - name: Publicar no Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/LineOps-Setup-*.exe
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+      - name: Guardar o instalador (execução manual)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: LineOps-Setup-${{ steps.ver.outputs.v }}
+          path: dist/LineOps-Setup-*.exe

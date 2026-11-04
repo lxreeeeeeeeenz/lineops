@@ -1,0 +1,21 @@
+PASTA DOS RPL (CGNA) DO AEROSCALE
+=================================
+
+Coloque aqui os arquivos de Plano de Voo Repetitivo (RPL) do CGNA, em texto (.txt).
+Exemplo:
+
+  AZU.txt   (Azul)
+  GLO.txt   (GOL)
+  TAM.txt   (LATAM)
+
+Toda vez que o AeroScale abre, ele importa sozinho os arquivos desta pasta que ainda
+não foram importados (compara pelo conteúdo, não pelo nome). Um arquivo novo da mesma
+companhia com validade sobreposta substitui o anterior.
+
+- Para trocar por uma versão mais nova: substitua o arquivo aqui e abra o AeroScale.
+- Para importar na hora, sem reiniciar: Importar RPL -> "Importar arquivos da pasta rpl/".
+- Arquivo apagado em "Importar RPL" não volta sozinho na próxima abertura.
+- Para desligar a importação automática: Configurações -> Geral.
+
+Outros nomes de arquivo também funcionam: a companhia é lida do cabeçalho do RPL.
+Este arquivo (LEIA-ME.txt) é ignorado na importação.
