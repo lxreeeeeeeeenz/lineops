@@ -10,6 +10,11 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 2.5.4
+
+* "Esqueci a senha": se o usuário digitado não existe neste computador, a tela diz quais existem (só depois do código
+  certo) e o código continua valendo. Cada LineOps tem o próprio usuário: o de outro PC não existe aqui.
+
 ## Novidades da 2.5.3: esqueci a senha e folgas do seu jeito
 
 * **Folgas** (Gerar escala → 1. Período): **Automáticas** (as regras do AeroScale, como sempre), **Sem folgas** ou **Só as
@@ -327,7 +332,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-2.5.3.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-2.5.4.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

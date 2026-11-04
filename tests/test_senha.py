@@ -42,6 +42,9 @@ def test_local_code_flow(core, monkeypatch):
     assert st["file"] == str(f) and f.exists()
     code = next(ln.strip() for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip().isdigit())
     wrong = "000000" if code != "000000" else "111111"
+    with pytest.raises(FGVError) as e:                                               # usuário de outro PC: diz quais existem aqui
+        senha.finish_local(c, d, "triple", code, "senha-nova-123")
+    assert "cmdt079" in e.value.message and f.exists()                               # e o código continua valendo
     with pytest.raises(FGVError):
         senha.finish_local(c, d, "cmdt079", wrong, "senha-nova-123")
     assert _ok(c, "velha-senha-1")

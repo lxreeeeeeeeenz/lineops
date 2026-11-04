@@ -98,6 +98,12 @@ def finish_local(core, data_dir: Path, username: str, code: str, new_password: s
         with tx(core):
             core.execute("UPDATE setting SET value=? WHERE key=?", (json.dumps(st), KEY))
         raise FGVError(f"Código errado ({MAX_TRIES - st['tries']} tentativa(s) restante(s)).", code="codigo_errado")
+    if not one(core.execute("SELECT 1 FROM user WHERE username=? COLLATE NOCASE", ((username or "").strip(),))):
+        # o código já provou que é o dono deste PC: aqui pode dizer quais usuários existem (o código continua valendo)
+        names = usernames(core)
+        raise NotFound(f"Não existe o usuário {(username or '').strip() or '(vazio)'} nesta instalação. "
+                       + (f"Usuário(s) deste computador: {', '.join(names)}. " if names else "")
+                       + "Cada LineOps tem o próprio usuário: o de outro PC não existe aqui.")
     out = reset_password(core, username, new_password, via="codigo_local")
     _clear(core, data_dir)
     return out
