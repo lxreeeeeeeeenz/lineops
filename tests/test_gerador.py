@@ -117,3 +117,26 @@ def test_wipe_all_clears_only_the_roster(eng, tmp_path):
     assert c.execute("SELECT COUNT(*) FROM roster_leg WHERE removed_batch IS NULL").fetchone()[0] == 0
     c.close()
     assert motor.wipe_engine(data, "GLO") >= 1 and _engine_schedules(data) == 0
+
+
+def test_days_off_none_and_manual(eng):
+    data, career = eng
+    with pytest.raises(FGVError):                                                    # manual sem nenhum dia marcado
+        motor.generate(data, "GLO", {**BASE, "days_off_mode": "manual"}, career)
+    with pytest.raises(FGVError):
+        motor.generate(data, "GLO", {**BASE, "days_off_mode": "talvez"}, career)
+    res = _run(data, career, {**BASE, "seed": 3, "days_off_mode": "none", "weekday_max": {"3": 0}, "requested_off": ["2026-11-10"]})
+    assert res["diagnostics"][0]["code"] == "sem_folgas"
+    c = db.connect(career)
+    days = [journey.day(c, f"2026-11-{k:02d}") for k in range(1, 31)]
+    assert not any(d["day_off"] for d in days)                                       # nem a quinta "Folga", nem a pedida
+    rep = journey.crew_report(c, "2026-11-01", "2026-11-30")
+    assert sum(1 for v in rep["violations"] if v["level"] == "error") == 0          # o painel não cobra folga
+    c.close()
+    want = ["2026-11-07", "2026-11-08", "2026-11-21"]
+    res = _run(data, career, {**BASE, "seed": 3, "days_off_mode": "manual", "requested_off": want})
+    assert res["diagnostics"][0]["code"] == "folgas_manuais"
+    c = db.connect(career)
+    offs = [d["date"] for d in (journey.day(c, f"2026-11-{k:02d}") for k in range(1, 31)) if d["day_off"]]
+    c.close()
+    assert offs == want                                                              # só as escolhidas

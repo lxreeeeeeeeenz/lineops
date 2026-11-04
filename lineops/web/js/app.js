@@ -2208,13 +2208,55 @@ view("gerar", async main => {
     if (!rm.legs && pos.icao) i.frompos.checked = i.frompos.checked || !!v.memorized;
   };
   const offBox = h("div", {class: "tools"});
-  const paintOff = () => put(offBox, gen.offs.map(x => h("button", {class: "chip", type: "button", title: "Tirar", onclick: () => { gen.offs = gen.offs.filter(y => y !== x); paintOff(); }}, `${dm(x)} ×`)));
+  const offReq = h("div", {});   // "Folga pedida" do passo 7 (some com "Sem folgas")
+  // folgas: automáticas (regras do AeroScale), nenhuma, ou só as marcadas no calendário
+  i.offmode = sel("days_off_mode", [["auto", "Automáticas (regras de folga do AeroScale)"], ["none", "Sem folgas"], ["manual", "Só as que eu escolher"]], "auto");
+  const offCal = h("div", {class: "offcal-wrap"});
+  const offNote = h("p", {class: "fine", style: "margin:6px 0 0"});
+  const periodDays = () => {
+    const k = i.kind.value, iso = x => x.toISOString().slice(0, 10), D = s => new Date(s + "T00:00:00Z");
+    let a, b;
+    if (["mensal", "semestral", "anual"].includes(k)) {
+      const [y, m] = (i.month.value || df.month).split("-").map(Number), n = k === "mensal" ? 1 : k === "semestral" ? 6 : 12;
+      a = i.fromday.value ? D(i.fromday.value) : new Date(Date.UTC(y, m - 1, 1)); b = new Date(Date.UTC(y, m - 1 + n, 0));
+    } else if (k === "semanal") { a = D(i.start.value || df.start_date); b = new Date(a.getTime() + 6 * 864e5); }
+    else { a = D(i.start.value || df.start_date); b = D(i.end.value || i.start.value || df.start_date); }
+    const out = [];
+    for (let t = a.getTime(); t <= b.getTime() && out.length < 400; t += 864e5) out.push(iso(new Date(t)));
+    return out;
+  };
+  const paintCal = () => {
+    const mode = i.offmode.value;
+    offCal.hidden = mode !== "manual"; offReq.hidden = mode === "none";
+    [i.cdo, i.longoff].forEach(x => { x.disabled = mode !== "auto"; if (mode !== "auto") x.checked = false; });
+    put(offNote, mode === "none" ? "Nenhuma folga: as folgas regulamentares (Lei 13.475, arts. 50 e 51) ficam desligadas e o painel não cobra folga. Jornada, repouso e horas do mês continuam valendo, então pode sobrar dia sem voo quando eles apertam."
+      : mode === "manual" ? "Toque nos dias de folga. Só esses viram folga; as regras automáticas de folga ficam desligadas (jornada, repouso e horas do mês continuam valendo)."
+      : "O motor distribui as folgas pelas regras (mínimo do mês, máximo de dias seguidos, fim de semana do mês). Folgas pedidas entram no passo 7.");
+    if (mode !== "manual") return;
+    const days = periodDays();
+    if (days.length > 92) { put(offCal, h("p", {class: "fine"}, `Período longo (${days.length} dias): marque as folgas no campo “Folga pedida” do passo 7.`)); return; }
+    const pick = new Set(gen.offs), W = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+    const first = (new Date(days[0] + "T00:00:00Z").getUTCDay() + 6) % 7;
+    put(offCal, h("div", {class: "offcal"}, W.map(w => h("span", {class: "cal-wd"}, w)), Array.from({length: first}, () => h("span", {})),
+      days.map((ds, k) => h("button", {type: "button", class: "offday" + (pick.has(ds) ? " on" : "") + (ds.slice(8) === "01" && k ? " m1" : ""), title: dmy(ds),
+        onclick: () => { gen.offs = pick.has(ds) ? gen.offs.filter(x => x !== ds) : [...gen.offs, ds].sort(); paintOff(); paintCal(); }},
+        ds.slice(8) === "01" && k ? `1/${ds.slice(5, 7)}` : String(+ds.slice(8))))),
+      h("div", {class: "tools", style: "margin-top:6px"}, h("span", {class: "fine"}, `${gen.offs.filter(x => days.includes(x)).length} folga(s) marcada(s)`),
+        gen.offs.length ? h("button", {class: "btn ghost sm", type: "button", onclick: () => { gen.offs = []; paintOff(); paintCal(); }}, "Limpar") : null));
+  };
+  const paintOff = () => put(offBox, gen.offs.map(x => h("button", {class: "chip", type: "button", title: "Tirar", onclick: () => { gen.offs = gen.offs.filter(y => y !== x); paintOff(); if (i.offmode.value === "manual") paintCal(); }}, `${dm(x)} ×`)));
   paintOff();
   const periodBox = h("div", {class: "row"});
   const monthly = () => ["mensal", "semestral", "anual"].includes(i.kind.value);
   const paintPeriod = () => put(periodBox, field(monthly() ? (i.kind.value === "mensal" ? "Mês" : "Mês inicial") : i.kind.value === "semanal" ? "Início da semana" : "Data inicial", monthly() ? i.month : i.start),
     monthly() ? field("A partir do dia (opcional)", i.fromday) : null, i.kind.value === "avulsa" ? field("Data final", i.end) : null);
   i.kind.addEventListener("change", paintPeriod); paintPeriod();
+  [i.kind, i.month, i.start, i.end, i.fromday].forEach(x => x.addEventListener("change", () => { if (i.offmode.value === "manual") paintCal(); }));
+  i.offmode.addEventListener("change", paintCal);
+  put(offReq, h("div", {class: "row"}, field("Folga pedida", i.off), h("div", {style: "align-self:end;margin-bottom:13px"},
+    h("button", {class: "btn ghost sm", type: "button", onclick: () => { if (i.off.value && !gen.offs.includes(i.off.value)) { gen.offs.push(i.off.value); gen.offs.sort(); paintOff(); if (i.offmode.value === "manual") paintCal(); } }}, "Adicionar"))),
+    offBox);
+  paintCal();
   const out = h("div", {});
   const csv = v => v.split(/[ ,;]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
   const body = () => {
@@ -2236,7 +2278,8 @@ view("gerar", async main => {
       reserve_min_days: resTouched.v ? +i.rmin.value : null, reserve_max_days: resTouched.v ? +i.rmax.value : null,
       reserve_base_pct: +i.rbase.value, reserve_activation_pct: +i.ract.value, reserve_activation_max_days: +i.ractd.value,
       avoid_madrugada: i.madr.checked, time_pref: i.pref.value || null, seed: i.seed.value === "" ? null : +i.seed.value, requested_off: gen.offs,
-      overnights: nights.map(x => ({date: x.date, airport: x.airport}))};
+      overnights: nights.map(x => ({date: x.date, airport: x.airport})), days_off_mode: i.offmode.value};
+    if (b.days_off_mode === "none") b.requested_off = [];
     if (car.code === "GLO") b.include_cargo = i.cargo.checked;
     if (["mensal", "semestral", "anual"].includes(b.kind)) b.month = i.month.value; else { b.start_date = i.start.value; if (b.kind === "avulsa") b.end_date = i.end.value || i.start.value; }
     if (i.frompos.checked) b.from_position = true;
@@ -2305,7 +2348,8 @@ view("gerar", async main => {
         h("div", {class: "panel"}, step(1, "Período"), h("div", {class: "hr"}),
           field("Tipo de escala", i.kind), periodBox, field("Nome da escala (opcional)", i.name),
           h("label", {class: "ck"}, i.replace, "Substituir a escala que já existe nesses dias (o que vem antes fica; continua de onde o avião estava)"),
-          h("label", {class: "ck"}, i.frompos, fromPosLabel)),
+          h("label", {class: "ck"}, i.frompos, fromPosLabel),
+          h("div", {class: "subpanel"}, field("Folgas", i.offmode), offNote, offCal)),
         h("div", {class: "panel"}, step(2, "Tripulante"), h("div", {class: "hr"}),
           h("p", {class: "fine", style: "margin-top:0"}, "Como na vida real: o piloto segue a habilitação no tipo, fica com a aeronave enquanto ela segue o rodízio real e troca de aeronave nos hubs."),
           h("div", {class: "row"}, field("Habilitação (tipo)", i.type), field("Conexão mínima com troca de aeronave (min)", i.swap)),
@@ -2349,9 +2393,7 @@ view("gerar", async main => {
           h("div", {class: "row"}, field("Chance de ser na base (%)", i.rbase), field("Chance de acionamento (%)", i.ract), field("Acionamento dura até (dias)", i.ractd)),
           h("p", {class: "fine"}, "Sorteada entre 3 e 6 dias seguidos. Acionada, recebe voos reais do RPL que saem do local da reserva e voltam a ele; sem sequência compatível, o acionamento fica registrado como inviável, sem inventar voos.")),
         h("div", {class: "panel"}, step(7, "Seu pedido"), h("div", {class: "hr"}),
-          h("div", {class: "row"}, field("Folga pedida", i.off), h("div", {style: "align-self:end;margin-bottom:13px"},
-            h("button", {class: "btn ghost sm", type: "button", onclick: () => { if (i.off.value && !gen.offs.includes(i.off.value)) { gen.offs.push(i.off.value); gen.offs.sort(); paintOff(); } }}, "Adicionar"))),
-          offBox, h("div", {class: "row", style: "margin-top:8px"}, field("Período do dia", i.pref), field("Semente (repetir uma escala)", i.seed)),
+          offReq, h("div", {class: "row", style: "margin-top:8px"}, field("Período do dia", i.pref), field("Semente (repetir uma escala)", i.seed)),
           h("label", {class: "ck"}, i.madr, "Evitar madrugada"),
           h("div", {class: "subpanel"}, h("b", {}, "Pernoite pedido"),
             h("p", {class: "fine", style: "margin:4px 0 8px"}, "Escolha a noite e o aeroporto onde quer dormir. O motor termina o dia ali com voos reais do RPL, dentro das regras; folga regulamentar no caminho troca de dia. Se não der, a escala sai mesmo assim e o diagnóstico diz por quê."),

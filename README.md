@@ -10,7 +10,14 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
-## Novidades da 2.5.3: esqueci a senha
+## Novidades da 2.5.3: esqueci a senha e folgas do seu jeito
+
+* **Folgas** (Gerar escala → 1. Período): **Automáticas** (as regras do AeroScale, como sempre), **Sem folgas** ou **Só as
+  que eu escolher** (calendário do período: toque nos dias). Nos dois últimos modos, o interruptor "Folgas
+  regulamentares" do próprio AeroScale fica desligado: o motor não sorteia folga nem bloco longo, a "Folga" fixa do dia da
+  semana sai, e o painel não cobra folga mínima nem dias seguidos (Lei 13.475, arts. 50 e 51). Jornada, repouso e horas do
+  mês continuam valendo, então "Sem folgas" ainda pode ter dia sem voo quando esses limites apertam (o diagnóstico diz
+  qual). Para voar todo dia, desligue também "Limites de 80 h…" nas regras de tripulação.
 
 * A LineOps não tem senha padrão: cada instalação cria o usuário no primeiro acesso e guarda só o hash (scrypt). A senha
   não se recupera, se troca, e nada da carreira é apagado.

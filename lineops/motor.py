@@ -192,7 +192,10 @@ ALLOWED = {"kind", "month", "start_date", "end_date", "base", "icao_type", "mode
            "max_consecutive_days", "reserve_min_days", "reserve_max_days", "reserve_base_pct", "reserve_activation_pct",
            "reserve_activation_max_days", "equipment",
            # LineOps: pernoite pedido (o motor termina o dia no aeroporto pedido, com must_end do próprio AeroScale)
-           "overnights", "include_cargo"}
+           "overnights", "include_cargo",
+           # LineOps: folgas automáticas (regras), nenhuma folga, ou só as escolhidas a dedo
+           "days_off_mode"}
+DAYS_OFF_MODES = ("auto", "none", "manual")
 
 
 def clean_params(airline: str, raw: dict) -> dict:
@@ -205,6 +208,19 @@ def clean_params(airline: str, raw: dict) -> dict:
     if p.get("icao_type"):
         p["icao_type"] = str(p["icao_type"]).upper()
         p["aircraft_mode"] = "type_only"           # escala do tripulante: segue a habilitação, não uma matrícula
+    mode = p.get("days_off_mode") or "auto"
+    if mode not in DAYS_OFF_MODES:
+        raise FGVError("Modo de folgas inválido (auto, none ou manual).", code="campo_invalido")
+    if mode != "auto":
+        # o próprio interruptor do AeroScale "Folgas regulamentares" desliga: o motor não sorteia folga nenhuma
+        # (nem o bloco longo) e o crew.analyze não cobra folga mínima, dias seguidos nem fim de semana do mês.
+        p["crew_days_off"] = False
+        p["long_off"] = False
+        p["weekday_max"] = {k: v for k, v in (p.get("weekday_max") or {}).items() if v not in (0, "0")}  # "Folga" do dia da semana sai
+        if mode == "none":
+            p["requested_off"] = []
+        elif not p.get("requested_off"):
+            raise FGVError("Folgas manuais: marque pelo menos um dia (ou escolha “Sem folgas”).", code="campo_invalido")
     return p
 
 
@@ -254,6 +270,19 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None)
         if gone:
             log.info("motor: %d escala(s) antiga(s) de %s no período substituída(s)", gone, airline)
         sid = _generate_with_nights(db, p, start_pos, progress)
+        mode = p.get("days_off_mode") or "auto"
+        if mode != "auto":
+            offs = p.get("requested_off") or []
+            note = ({"level": "warning", "code": "sem_folgas",
+                     "message": "Sem folgas, como você pediu: as folgas regulamentares (Lei 13.475, arts. 50 e 51) ficaram desligadas "
+                                "nesta escala e o painel não cobra folga mínima nem dias seguidos. Os outros limites (jornada, repouso, "
+                                "horas de voo do mês) continuam valendo, então pode haver dia sem voo quando eles apertam."}
+                    if mode == "none" else
+                    {"level": "info", "code": "folgas_manuais",
+                     "message": f"Folgas manuais: só as {len(offs)} que você marcou (" + ", ".join(f"{x[8:10]}/{x[5:7]}" for x in sorted(offs)[:12])
+                                + ("…" if len(offs) > 12 else "") + "). As folgas regulamentares automáticas ficaram desligadas."})
+            dg = json.loads(db.execute("SELECT diagnostics FROM schedules WHERE id=?", (sid,)).fetchone()[0] or "[]")
+            db.execute("UPDATE schedules SET diagnostics=? WHERE id=?", (json.dumps([note] + dg, ensure_ascii=False), sid))
         db.commit()
         progress(0.95, "entregando a escala à carreira")
         from .aeroscale_import import import_backup

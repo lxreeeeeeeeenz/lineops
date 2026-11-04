@@ -801,3 +801,11 @@ input::placeholder{text-transform:none}
 .pernoite-ck.auto b{color:var(--ember)}
 .rail .who.has-avatar{display:flex;align-items:center;gap:10px}
 .rail .who .avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--hair-2)}
+/* folgas manuais (2.5.3) */
+.offcal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:8px}
+.offcal .cal-wd{padding:2px 2px 4px;text-align:center}
+.offday{height:34px;border:1px solid var(--hair-2);border-radius:8px;background:var(--iron);color:var(--bone);font:500 13px/1 var(--mono);cursor:pointer}
+.offday:hover{border-color:var(--orange)}
+.offday.on{background:var(--orange-14);border-color:var(--orange);color:var(--ember);font-weight:700}
+.offday.m1{font-size:11px}
+input[type=checkbox]:disabled + *{opacity:.55}
