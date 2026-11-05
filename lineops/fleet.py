@@ -164,16 +164,36 @@ def add_unavailability(conn, aircraft_id, from_date, to_date, reason, user_id=No
 
 
 def add_discrepancy(conn, aircraft_id, title, *, description=None, restriction="NENHUMA", restriction_text=None,
-                    mel_ref=None, deferred=False, due_date=None, user_id=None):
+                    mel_ref=None, deferred=False, due_date=None, mel_item_id=None, airline=None, user_id=None):
+    """Discrepância. Com mel_item_id (item da MEL importada na Biblioteca): o código, o título (se vazio), a categoria e o
+    prazo (definição 22 da MEL: B 3 dias, C 10, D 120) vêm do item; com procedimento (O), a restrição vira INFORMA com o
+    texto do procedimento, a não ser que você diga outra."""
     get_aircraft(conn, aircraft_id, totals=False)
     if restriction not in RESTRICTIONS:
         raise FGVError("Restrição inválida.", code="restricao_invalida")
+    mel_cat = None
+    if mel_item_id:
+        from . import biblioteca
+        it = biblioteca.mel_item(conn, airline, int(mel_item_id)) if airline else one(conn.execute("SELECT * FROM mel_item WHERE id=?", (int(mel_item_id),)))
+        if not it:
+            raise NotFound("Item da MEL não encontrado.")
+        mel_ref = mel_ref or it["code"]
+        title = title or f"{it['code']} {it['title']}".strip()
+        mel_cat = it["category"]
+        deferred = True
+        if not due_date:
+            due_date = biblioteca.due_date_for(mel_cat, now_iso())
+        if restriction == "NENHUMA" and it["oper"]:
+            restriction, restriction_text = "INFORMA", restriction_text or ("Procedimento (O) da MEL " + it["code"] + ":\n" + it["oper"][:1500])
+        if not description:
+            description = (it["remarks"] or "")[:2000]
     if not title:
         raise FGVError("Informe o título da discrepância.", code="titulo_vazio")
     with tx(conn):
-        cur = conn.execute("""INSERT INTO discrepancy(aircraft_id, opened_at, title, description, status, restriction, restriction_text, mel_ref, due_date)
-                              VALUES (?,?,?,?,?,?,?,?,?)""", (aircraft_id, now_iso(), title, description, "DIFERIDA" if deferred else "ABERTA",
-                                                              restriction, restriction_text, mel_ref, due_date))
+        cur = conn.execute("""INSERT INTO discrepancy(aircraft_id, opened_at, title, description, status, restriction, restriction_text, mel_ref, due_date,
+                                                      mel_item_id, mel_category)
+                              VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (aircraft_id, now_iso(), title, description, "DIFERIDA" if deferred else "ABERTA",
+                                                              restriction, restriction_text, mel_ref, due_date, int(mel_item_id) if mel_item_id else None, mel_cat))
         audit(conn, user_id, "discrepancy.add", "discrepancy", cur.lastrowid, {"aircraft": aircraft_id})
     return cur.lastrowid
 

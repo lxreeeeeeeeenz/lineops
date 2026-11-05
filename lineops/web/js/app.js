@@ -142,7 +142,7 @@ function journeyRail(day) {
 
 /* ───────────────────────── navegação ───────────────────────── */
 const VIEWS = {};
-const NAV = [["painel", "Painel"], ["mensagens", "Mensagens"], ["escala", "Escala"], ["voos", "Voos"], ["rede", "Rede"], ["frota", "Frota"], ["pireps", "PIREPs"], ["diario", "Diário"], ["carreira", "Carreira"], ["estatisticas", "Estatísticas"], ["externos", "Voos Externos"], ["salarios", "Salários"], ["ajustes", "Ajustes"]];
+const NAV = [["painel", "Painel"], ["mensagens", "Mensagens"], ["escala", "Escala"], ["voos", "Voos"], ["rede", "Rede"], ["frota", "Frota"], ["pireps", "PIREPs"], ["diario", "Diário"], ["carreira", "Carreira"], ["estatisticas", "Estatísticas"], ["biblioteca", "Biblioteca"], ["externos", "Voos Externos"], ["salarios", "Salários"], ["ajustes", "Ajustes"]];
 let me = null, pending = 0, booted = false;
 const view = (name, fn) => VIEWS[name] = fn;
 
@@ -276,6 +276,77 @@ view("continuacoes", async main => {
 
 /* ───────────────────────── estatísticas ───────────────────────── */
 const stats = {src: "roster", period: "mes"};
+/* ───────────────────────── biblioteca técnica e MEL ───────────────────────── */
+const CAT_CLS = {A: "stop", B: "hold", C: "", D: "cool"};
+view("biblioteca", async (main, arg) => {
+  const tab = (arg || "docs").split("/")[0];
+  const tabs = h("div", {class: "seg", style: "margin-bottom:14px"}, [["docs", "Documentos"], ["busca", "Busca"], ["mel", "MEL"]].map(([k, l]) =>
+    h("button", {"aria-pressed": k === tab, onclick: () => { location.hash = `#/biblioteca/${k}`; }}, l)));
+  const body = h("div", {});
+  put(main, h("div", {class: "head"}, h("div", {}, h("h1", {}, "Biblioteca técnica"),
+    h("p", {class: "muted"}, `Os PDF que você importar (MEL, CDL, QRH, FCOM) ficam só nesta companhia (${me.career.name}), como texto pesquisável por página. Nada vem com a LineOps.`))), tabs, body);
+  if (tab === "docs") {
+    const lib = await get("/api/biblioteca");
+    const file = h("input", {type: "file", accept: "application/pdf,.pdf"}), kind = h("select", {}, [["", "Detectar pelo PDF"], ...lib.kinds.map(k => [k, k])].map(([v, l]) => h("option", {value: v}, l)));
+    const title = h("input", {placeholder: "opcional: lido da capa"}), st = h("div", {class: "fine"});
+    const up = async () => {
+      const f = file.files[0]; if (!f) return toast("Escolha um PDF.", true);
+      put(st, `Importando ${f.name}: lendo as páginas… (um manual de 500 páginas leva até um minuto)`);
+      const j = await act(() => api("POST", `/api/biblioteca/importar?name=${encodeURIComponent(f.name)}&kind=${encodeURIComponent(kind.value)}&title=${encodeURIComponent(title.value)}`, undefined, f));
+      if (!j) return put(st);
+      toast(`${j.title}: ${j.pages} páginas${j.items ? `, ${j.items} itens da ${j.kind}` : ""}`); if (j.note) toast(j.note, true); render();
+    };
+    put(body, h("div", {class: "panel"}, h("h2", {}, "Importar PDF"),
+        h("div", {class: "row"}, field("Arquivo", file), field("Tipo", kind), field("Título", title)),
+        h("div", {class: "tools"}, h("button", {class: "btn", onclick: up}, "Importar"), st),
+        h("p", {class: "fine"}, "MEL no formato AMOS (GOL): cada item vira um registro com código ATA, categoria de reparo (A/B/C/D), instalados, exigidos, condições e procedimentos (M)/(O). Outros PDF: busca por página. PDF digitalizado (imagem) não tem texto para buscar. O arquivo não é copiado: só o texto.")),
+      h("div", {class: "panel"}, h("h2", {}, "Documentos desta companhia"),
+        lib.items.length ? h("div", {class: "tbl"}, h("table", {}, h("thead", {}, h("tr", {}, ["Tipo", "Título", "Frota", "Revisão", "Páginas", "Itens", ""].map(x => h("th", {}, x)))),
+          h("tbody", {}, lib.items.map(d => h("tr", {}, h("td", {}, chip(d.kind, d.kind === "MEL" ? "cool" : "")), h("td", {}, h("b", {}, d.title), h("div", {class: "fine"}, d.file_name)),
+            h("td", {}, d.fleet || "—"), h("td", {}, d.revision ? `${d.revision}${d.rev_date ? " · " + d.rev_date : ""}` : "—"), h("td", {class: "mono"}, d.pages), h("td", {class: "mono"}, d.items || "—"),
+            h("td", {}, h("button", {class: "btn ghost sm", onclick: () => dialog("Apagar da biblioteca?", `${d.title}: o texto e os itens saem do banco. O seu PDF original não é tocado.`, h("div", {}),
+              [closeBtn, {label: "Apagar", fn: async () => { if (await act(() => api("DELETE", `/api/biblioteca/${d.id}`), "Apagado")) render(); }}])}, "Apagar")))))))
+        : h("p", {class: "muted"}, "Nenhum documento ainda. Importe o PDF da sua MEL.")));
+  } else if (tab === "busca") {
+    const q = h("input", {placeholder: "ex.: weather radar, 34-43, outflow valve"}), res = h("div", {});
+    const go = async () => { if (q.value.trim().length < 2) return; put(res, skeleton("s"));
+      const r = await get(`/api/biblioteca/buscar?q=${encodeURIComponent(q.value.trim())}`).catch(e => ({items: [], note: e.message}));
+      put(res, r.note ? h("p", {class: "muted"}, r.note) : null, r.items.length ? r.items.map(x => h("div", {class: "lib-hit"},
+        h("div", {}, chip(x.kind, "cool"), " ", h("b", {}, x.doc), h("span", {class: "muted"}, ` · página ${x.page}`)), h("div", {class: "lib-snip"}, x.snippet),
+        h("a", {href: "#", onclick: async e => { e.preventDefault(); const pg = await get(`/api/biblioteca/${x.doc_id}/pagina/${x.page}`);
+          dialog(`${pg.doc.title} · página ${x.page}`, "", h("pre", {class: "lib-page"}, pg.text), [closeBtn]); }}, "abrir a página")))
+        : h("p", {class: "muted"}, "Nada encontrado.")); };
+    q.addEventListener("keydown", e => e.key === "Enter" && go());
+    put(body, h("div", {class: "panel"}, h("div", {class: "row"}, field("Buscar nos documentos", q), h("div", {style: "align-self:end;margin-bottom:13px"}, h("button", {class: "btn", onclick: go}, "Buscar"))), res));
+  } else {
+    const q = h("input", {placeholder: "código (21-10) ou nome do item"}), ata = h("select", {}, h("option", {value: ""}, "Todos os capítulos")), res = h("div", {}), det = h("div", {});
+    const load = async () => { put(res, skeleton("s"));
+      const r = await get(`/api/mel?q=${encodeURIComponent(q.value.trim())}&ata=${ata.value}`);
+      if (ata.options.length === 1) r.atas.forEach(a => ata.appendChild(h("option", {value: a.ata}, `${a.ata} · ${a.section || ""} (${a.n})`)));
+      put(res, r.docs.length ? null : h("p", {class: "muted"}, "Nenhuma MEL importada nesta companhia. Importe em Documentos."),
+        r.items.length ? h("div", {class: "tbl mel-tbl"}, h("table", {}, h("colgroup", {}, [130, null, 56, 52, 52, 300, 64].map(w => h("col", {style: w ? `width:${w}px` : ""}))),
+          h("thead", {}, h("tr", {}, ["Item", "Nome", "Cat.", "Inst.", "Exig.", "Condições", ""].map(x => h("th", {}, x)))),
+          h("tbody", {}, r.items.map(x => h("tr", {class: x.category ? "" : "mel-head"}, h("td", {class: "mono"}, x.code), h("td", {style: `padding-left:${8 + (x.level - 1) * 10}px`}, x.title),
+            h("td", {}, x.category ? chip(x.category, CAT_CLS[x.category]) : ""), h("td", {class: "mono"}, x.installed ?? ""), h("td", {class: "mono"}, x.required ?? ""),
+            h("td", {class: "fine mel-rem"}, (x.remarks || "").replace(/\s+/g, " ").slice(0, 90), x.has_m ? chip("M", "") : null, x.has_o ? chip("O", "hold") : null),
+            h("td", {}, h("button", {class: "btn ghost sm", onclick: () => open(x.id)}, "Ver")))))))
+        : r.docs.length ? h("p", {class: "muted"}, "Nenhum item com esse filtro.") : null); };
+    const open = async id => { const it = await get(`/api/mel/${id}`);
+      put(det, h("div", {class: "panel"}, h("div", {class: "panel-head"}, h("h2", {}, h("span", {class: "mono"}, it.code), " ", it.title),
+          h("div", {class: "tools"}, it.category ? chip(`categoria ${it.category}${it.deadline_days ? ` · ${it.deadline_days} dias` : " · prazo na observação"}`, CAT_CLS[it.category]) : null)),
+        h("dl", {class: "kv"}, h("dt", {}, "Documento"), h("dd", {}, `${it.doc}${it.revision ? ` · rev. ${it.revision}` : ""} · página ${it.page}`),
+          h("dt", {}, "Capítulo"), h("dd", {}, `ATA ${it.ata} · ${it.section || ""}`), h("dt", {}, "Instalados / exigidos"), h("dd", {}, `${it.installed ?? "—"} / ${it.required ?? "—"}`),
+          it.placard ? [h("dt", {}, "Placard"), h("dd", {}, it.placard)] : null),
+        it.remarks ? h("div", {}, h("h3", {}, "Condições (remarks or exceptions)"), h("pre", {class: "lib-page"}, it.remarks)) : null,
+        it.maint ? h("div", {}, h("h3", {}, "Procedimento de manutenção (M)"), h("pre", {class: "lib-page"}, it.maint)) : null,
+        it.oper ? h("div", {}, h("h3", {}, "Procedimento operacional (O)"), h("pre", {class: "lib-page"}, it.oper)) : null,
+        it.children.length ? h("div", {}, h("h3", {}, "Sub-itens"), it.children.map(c => h("div", {}, h("a", {href: "#", onclick: e => { e.preventDefault(); open(c.id); }}, h("span", {class: "mono"}, c.code), " ", c.title), " ", c.category ? chip(c.category, CAT_CLS[c.category]) : null))) : null,
+        h("p", {class: "fine"}, "Transcrição automática do seu PDF: confira na página indicada antes de usar."))); window.scrollTo({top: 0, behavior: "smooth"}); };
+    q.addEventListener("keydown", e => e.key === "Enter" && load()); ata.addEventListener("change", load);
+    put(body, h("div", {class: "panel"}, h("div", {class: "row"}, field("Buscar item", q), field("Capítulo ATA", ata), h("div", {style: "align-self:end;margin-bottom:13px"}, h("button", {class: "btn", onclick: load}, "Buscar")))), det, h("div", {class: "panel"}, res));
+    load();
+  }
+});
 view("estatisticas", async main => {
   const ym = today().slice(0, 7), [y, m] = ym.split("-").map(Number), last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   const q = stats.period === "mes" ? `?inicio=${ym}-01&fim=${last}` : "";
@@ -371,6 +442,7 @@ function paletteItems(q) {
   const items = NAV.filter(([k]) => k !== "salarios" || payOn()).map(([k, l]) => ({label: l, hint: "tela", go: `#/${k}`}));
   items.push({label: "Gerar escala", hint: "ação", go: "#/gerar"}, {label: "Escala de hoje", hint: "ação", go: `#/escala/${today()}`},
              {label: "Trocar de companhia", hint: "ação", go: "#/modo"}, {label: "Continuações do avião (beta)", hint: "tela", go: "#/continuacoes"},
+             {label: "Biblioteca técnica (MEL, CDL, QRH)", hint: "tela", go: "#/biblioteca"}, {label: "MEL: itens", hint: "tela", go: "#/biblioteca/mel"},
              {label: "Escala em texto / agenda", hint: "ação", fn: () => rosterTextDialog(roster.date, roster.bounds || {})});
   const m = q.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/) || q.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) {
@@ -1485,12 +1557,27 @@ function discDialog(a) {
   const t = h("input"), d = h("input"), rt = h("input", {placeholder: "ex.: somente pista seca"}), mel = h("input", {placeholder: "referência sua"});
   const r = h("select", {}, [["NENHUMA", "Sem restrição"], ["INFORMA", "Apenas informa"], ["CONFIRMA", "Exige confirmação para voar"], ["BLOQUEIA", "Bloqueia a aeronave"]].map(([v, l]) => h("option", {value: v}, l)));
   const def = h("input", {type: "checkbox"}), due = h("input", {type: "date"});
+  // item da MEL importada na Biblioteca: código, título, categoria e prazo vêm dele
+  let melItem = null;
+  const melQ = h("input", {placeholder: "código (34-43) ou nome (weather radar)"}), melList = h("div", {class: "mel-pick"}), melSel = h("div", {class: "fine"});
+  let tm = null;
+  melQ.addEventListener("input", () => { clearTimeout(tm); tm = setTimeout(async () => {
+    const q = melQ.value.trim(); if (q.length < 2) return put(melList);
+    const r2 = await get(`/api/mel?q=${encodeURIComponent(q)}`).catch(() => ({items: []}));
+    put(melList, r2.items.filter(x => x.category).slice(0, 8).map(x => h("button", {class: "mel-opt", type: "button", onclick: () => {
+      melItem = x; mel.value = x.code; if (!t.value) t.value = `${x.code} ${x.title}`; def.checked = true;
+      const days = {B: 3, C: 10, D: 120}[x.category]; if (days) { const dt = new Date(); dt.setDate(dt.getDate() + days); due.value = dt.toISOString().slice(0, 10); }
+      put(melSel, `MEL ${x.code} · categoria ${x.category}${days ? ` · ${days} dias` : " · prazo na observação"}${x.has_o ? " · tem procedimento (O): vira “apenas informa” com o texto" : ""}`); put(melList);
+    }}, h("b", {class: "mono"}, x.code), " ", x.title, " ", chip(x.category, x.category === "A" ? "stop" : x.category === "B" ? "hold" : ""))),
+      r2.items.length ? null : h("span", {class: "muted"}, "nada na MEL importada"));
+  }, 250); });
   dialog("Registrar discrepância", `Aeronave ${a.registration}`,
-    h("div", {}, field("Título", t), field("Descrição", d), field("Restrição", r), field("Texto da restrição", rt),
-      h("label", {class: "ck"}, def, "Diferida"), h("div", {class: "row", style: "margin-top:12px"}, field("Prazo do diferimento", due), field("Referência MEL (sua)", mel))),
+    h("div", {}, h("div", {class: "subpanel"}, field("Item da MEL (Biblioteca)", melQ), melList, melSel),
+      field("Título", t), field("Descrição", d), field("Restrição", r), field("Texto da restrição", rt),
+      h("label", {class: "ck"}, def, "Diferida"), h("div", {class: "row", style: "margin-top:12px"}, field("Prazo do diferimento", due), field("Referência MEL", mel))),
     [closeBtn, {label: "Registrar", fn: async () => {
       if (!await act(() => post(`/api/aircraft/${a.id}/discrepancies`, {title: t.value, description: d.value, restriction: r.value,
-        restriction_text: rt.value || null, deferred: def.checked, due_date: due.value || null, mel_ref: mel.value || null}), "Discrepância registrada")) return false;
+        restriction_text: rt.value || null, deferred: def.checked, due_date: due.value || null, mel_ref: mel.value || null, mel_item_id: melItem ? melItem.id : null}), "Discrepância registrada")) return false;
       render();
     }}]);
 }
@@ -3508,7 +3595,12 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.2b5": [
+const NEWS = {"3.0.2b6": [
+  ["Biblioteca técnica", "Tela nova: importe os seus PDF (MEL, CDL, QRH, FCOM). Ficam só na companhia atual, como texto pesquisável por página. Nada vem com a LineOps: são documentos seus."],
+  ["MEL item a item", "A MEL no formato AMOS (GOL) é lida item a item: código ATA, categoria de reparo (A/B/C/D), instalados, exigidos, condições, placard e procedimentos (M)/(O). Navegue por capítulo ou busque pelo nome."],
+  ["Discrepância pela MEL", "Na Frota, ao registrar uma discrepância, escolha o item da MEL: o código, o título, a categoria e o prazo (B 3 dias, C 10, D 120) vêm dele; com procedimento (O), a restrição vira “apenas informa” com o texto."],
+  ["Tirar os dias INATIVOS", "Em Gerar escala › Dias INATIVOS (todos de uma vez) ou no próprio dia na Escala. Cada dia é preenchido com voos reais do RPL; se nenhum par cabe, o dia fica livre."]],
+  "3.0.2b5": [
   ["Tirar os dias INATIVOS", "Em Gerar escala › Dias INATIVOS (todos de uma vez) ou no próprio dia na Escala. Cada dia é preenchido com voos reais do RPL (ida e volta de onde você está, dentro das regras de jornada); se nenhum par cabe, o dia fica livre. Só os dias com INATIVO mudam."],
   ["Continuações automáticas na geração", "O gerador agora segue sozinho para onde o avião costuma ir depois de cada voo (RPL + ADS-B), sem você cadastrar nada. Ex.: TAM3376 → Petrolina nos dias em que isso acontece."],
   ["Força das continuações", "Slider em Gerar escala: 0 desliga; quanto mais alto, mais vezes a continuação é obrigatória e mais incertas as que entram (alta a partir de 1, média a partir de 30, baixa a partir de 80). As que você cadastra valem sempre. O diagnóstico da escala diz quantas foram seguidas."],

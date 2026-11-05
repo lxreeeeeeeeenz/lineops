@@ -16,7 +16,7 @@ for pkg in ("webview", "pystray"):
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hidden += h
 datas += collect_data_files("reportlab") + collect_data_files("tzdata")
-hidden += collect_submodules("uvicorn") + collect_submodules("lineops") + ["tzdata", "clr", "PIL._tkinter_finder"]
+hidden += collect_submodules("uvicorn") + collect_submodules("lineops") + collect_submodules("pypdf") + ["tzdata", "clr", "PIL._tkinter_finder"]
 
 a = Analysis([os.path.join(SPECPATH, "launch_lineops.py")], pathex=[ROOT], binaries=binaries, datas=datas,
              hiddenimports=hidden, excludes=["tkinter", "pytest", "httpx"], noarchive=False)

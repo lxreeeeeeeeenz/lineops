@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, continuacao, estatisticas, exportar, fleet, frota_ref, inativo, pernoite, senha, legacy, flights, journey,
+from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, biblioteca, conquistas, continuacao, estatisticas, exportar, fleet, frota_ref, inativo, pernoite, senha, legacy, flights, journey,
                careers, carreira, enroute, equipe, externos, feed, ivao, motor, notify, stay, tripulacao, loadsheet as ls_mod, logs, validity, manual, network, ofp as ofp_mod, payroll, pireps, rules, security, troca, posicao, visao)
 from .db import audit, connect, migrate, now_iso, one, pending, rows, tx
 from .errors import FGVError, NotFound
@@ -1102,6 +1102,53 @@ def create_app(data_dir: str | Path) -> FastAPI:
         finally:
             os.unlink(tmp.name)
 
+    # ----------------------------------------------------------------- biblioteca técnica (PDF seus) e MEL
+    @app.get("/api/biblioteca")
+    def library(u=Depends(auth), conn=Depends(get_db)):
+        return {"items": biblioteca.docs(conn, u["career"]), "kinds": list(biblioteca.KINDS),
+                "note": "Os PDF ficam só no banco desta companhia, como texto por página. Nada vem com a LineOps: importe os seus."}
+
+    @app.post("/api/biblioteca/importar")
+    async def library_import(request: Request, name: str = "documento.pdf", kind: str | None = None, title: str | None = None,
+                             u=Depends(session_only), conn=Depends(get_db)):
+        """Corpo bruto = o PDF. ?name= nome do arquivo, ?kind= MEL/CDL/QRH/FCOM/OUTRO (vazio: detecta), ?title= título."""
+        size = 0
+        with tempfile.NamedTemporaryFile(prefix="lineops_pdf_", suffix=".pdf", delete=False) as tmp:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_UPLOAD:
+                    os.unlink(tmp.name)
+                    raise FGVError("Arquivo grande demais.", code="arquivo_grande", status=413)
+                tmp.write(chunk)
+        try:
+            if size == 0:
+                raise FGVError("Nenhum arquivo recebido.", code="arquivo_vazio")
+            return biblioteca.import_pdf(conn, u["career"], tmp.name, name[:160], kind=kind or None, title=title or None, user_id=u["id"])
+        finally:
+            os.unlink(tmp.name)
+
+    @app.delete("/api/biblioteca/{doc_id}")
+    def library_delete(doc_id: int, u=Depends(session_only), conn=Depends(get_db)):
+        return biblioteca.delete_doc(conn, u["career"], doc_id, user_id=u["id"])
+
+    @app.get("/api/biblioteca/buscar")
+    def library_search(q: str = "", doc: int | None = None, u=Depends(auth), conn=Depends(get_db)):
+        return biblioteca.search(conn, u["career"], q, doc)
+
+    @app.get("/api/biblioteca/{doc_id}/pagina/{pno}")
+    def library_page(doc_id: int, pno: int, u=Depends(auth), conn=Depends(get_db)):
+        return biblioteca.page(conn, u["career"], doc_id, pno)
+
+    @app.get("/api/mel")
+    def mel_list(q: str = "", doc: int | None = None, ata: str | None = None, u=Depends(auth), conn=Depends(get_db)):
+        r = biblioteca.mel_search(conn, u["career"], q, doc, ata)
+        r["docs"] = biblioteca.mel_docs(conn, u["career"])
+        return r
+
+    @app.get("/api/mel/{item_id}")
+    def mel_detail(item_id: int, u=Depends(auth), conn=Depends(get_db)):
+        return biblioteca.mel_item(conn, u["career"], item_id)
+
     @app.get("/api/import/batches")
     def batches(u=Depends(auth), conn=Depends(get_db)):
         out = rows(conn.execute("SELECT id, source_kind, source_name, source_version, source_created_at, imported_at, stats FROM import_batch ORDER BY id DESC LIMIT 50"))
@@ -1191,7 +1238,7 @@ def create_app(data_dir: str | Path) -> FastAPI:
     def disc(aid: int, b: dict = Body(...), u=Depends(session_only), conn=Depends(get_db)):
         return {"id": fleet.add_discrepancy(conn, aid, b.get("title"), description=b.get("description"), restriction=b.get("restriction", "NENHUMA"),
                                             restriction_text=b.get("restriction_text"), mel_ref=b.get("mel_ref"), deferred=bool(b.get("deferred")),
-                                            due_date=b.get("due_date"), user_id=u["id"])}
+                                            due_date=b.get("due_date"), mel_item_id=b.get("mel_item_id"), airline=u["career"], user_id=u["id"])}
 
     @app.post("/api/discrepancies/{did}/close")
     def disc_close(did: int, u=Depends(session_only), conn=Depends(get_db)):

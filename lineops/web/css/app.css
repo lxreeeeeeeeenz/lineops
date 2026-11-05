@@ -917,3 +917,17 @@ main{padding-top:22px}
 .cont-row:last-child{border-bottom:0}
 .chip.on{background:var(--orange-14);border-color:var(--orange);color:var(--ember)}
 @media (max-width:640px){.cont-row{grid-template-columns:1fr 1fr}}
+
+/* biblioteca técnica e MEL (3.0.2b6) */
+.lib-hit{padding:10px 0;border-bottom:1px solid var(--line)}
+.lib-hit:last-child{border-bottom:0}
+.lib-snip{font-size:13px;color:var(--muted);margin:4px 0 6px;line-height:1.45}
+.lib-page{white-space:pre-wrap;font-family:var(--mono);font-size:12.5px;line-height:1.5;background:var(--panel-2,rgba(255,255,255,.03));border:1px solid var(--line);border-radius:8px;padding:12px;max-height:60vh;overflow:auto;margin:6px 0 14px}
+.mel-head td{color:var(--muted);font-weight:600}
+.mel-tbl table{table-layout:fixed;width:100%}
+.mel-tbl td{white-space:normal;vertical-align:top}
+.mel-rem{line-height:1.35}
+@media (max-width:860px){.mel-tbl table{table-layout:auto;width:auto}.mel-tbl td{white-space:nowrap}}
+.mel-pick{display:flex;flex-direction:column;gap:4px;margin:4px 0 6px}
+.mel-opt{text-align:left;background:transparent;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:inherit;cursor:pointer;font:inherit;font-size:13px}
+.mel-opt:hover{border-color:var(--accent)}

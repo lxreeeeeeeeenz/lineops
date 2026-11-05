@@ -10,6 +10,23 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.2 beta 6
+
+* **Biblioteca técnica** (tela nova, ou Ctrl + K › "Biblioteca"). Importe os seus PDF: MEL, CDL, QRH, FCOM. O texto
+  fica página a página no banco da companhia atual (dados/carreiras/XXX.db), com busca (SQLite FTS5). Os documentos de
+  uma companhia não aparecem nas outras. **Nada vem com a LineOps**: as MEL/CDL/QRH são documentos da companhia,
+  protegidos; o arquivo não é copiado nem publicado, só o texto fica no seu banco.
+  * PDF digitalizado (imagem, sem texto) importa, mas a busca não acha nada nele. A LineOps avisa.
+* **MEL item a item.** A MEL no formato AMOS (como a da GOL, "Minimum Equipment List") é lida item a item: código ATA
+  (21-10-02-03), título, categoria de reparo (A/B/C/D), instalados, exigidos para despacho, condições (remarks or
+  exceptions), placard e os procedimentos (M) e (O). Na aba MEL dá para navegar por capítulo ATA ou buscar pelo nome ou
+  pelo código. Cada item mostra a página do PDF: confira lá antes de usar, é transcrição automática.
+* **Discrepância pela MEL.** Na Frota, ao registrar uma discrepância, escolha o item da MEL importada: o código, o título,
+  a categoria e o prazo de reparo (definição 22 da MEL: B 3 dias, C 10, D 120; A, o que a observação disser) vêm dele.
+  Item com procedimento operacional (O) vira restrição "apenas informa" com o texto do procedimento. A disponibilidade da
+  aeronave (Frota e resumo do dia) já considera o prazo vencido.
+* Dependência nova: `pypdf` (pip install -r requirements.txt). O instalador do Windows já leva.
+
 ## Novidades da 3.0.2 beta 5
 
 * **Tirar os dias INATIVOS.** O AeroScale coloca dias INATIVOS fora da base (descanso longo, sem voo). Agora dá para
@@ -412,7 +429,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.2b5.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.2b6.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não
