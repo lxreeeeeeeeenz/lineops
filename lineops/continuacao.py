@@ -20,12 +20,15 @@ observação, e a tela mostra os números para você julgar.
 """
 from __future__ import annotations
 
+import logging
 import threading
 from collections import defaultdict
 from datetime import date, timedelta
 
 from .db import now_iso, rows, tx
 from .errors import FGVError, NotFound
+
+log = logging.getLogger("lineops.continuacao")
 
 GAP_MIN, GAP_MAX = 25, 240
 WD = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
@@ -57,6 +60,68 @@ def _load(data_dir, airline: str):
         c.close()
     rec = (prof.get("airlines") or {}).get(airline) or {"days": 0, "flights": {}}
     return idx, rec, len(prof.get("days") or []) or int(rec.get("days") or 0)
+
+
+def real_successions(data_dir, airline: str) -> dict:
+    """{ident X: {ident Y: {weekday: n}}} tirado das escalas reais: as de referência (aeroscale/data/escalas_reais.json)
+    e as que você importou em "Importar escala real". Um voo seguido de outro no mesmo dia, saindo de onde o primeiro
+    chegou, é uma continuação vista de verdade."""
+    import json
+    import os
+    from .aeroscale import roster_import
+    out: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    texts = []
+    try:
+        ref = json.loads(open(os.path.join(os.path.dirname(__file__), "aeroscale", "data", "escalas_reais.json"), encoding="utf-8").read())
+        texts += [(it["text"], it["month"]) for it in ref.get("items", []) if it.get("airline") == airline]
+    except (OSError, ValueError):
+        pass
+
+    def feed(text, month):
+        y, m = int(month[:4]), int(month[5:7])
+        days, _w = roster_import.parse(text, y, m)
+        for d in days:
+            if d.get("kind") != "voo":
+                continue
+            legs = []
+            for sg in d.get("segments") or []:
+                r, nums = sg["route"], sg.get("numbers") or []
+                for i in range(len(r) - 1):
+                    n = nums[i] if i < len(nums) else ""
+                    if n and not (sg.get("dhd") or [False] * len(r))[i]:
+                        legs.append((airline + n.lstrip("0"), r[i], r[i + 1]))
+                    else:
+                        legs.append((None, r[i], r[i + 1]))
+            wd = date.fromisoformat(str(d["date"])[:10]).weekday()
+            for (xa, xf, xt), (ya, yf, yt) in zip(legs, legs[1:]):
+                if xa and ya and xt == yf:
+                    out[xa][ya][wd] += 1
+    for text, month in texts:
+        try:
+            feed(text, month)
+        except Exception:                                  # noqa: BLE001 — texto de referência fora do formato
+            log.exception("escala real de referência")
+    try:                                                   # as que você importou (motor: schedules com imported=True)
+        from . import motor
+        c = motor.connect(data_dir)
+        try:
+            for r in c.execute("SELECT id, params FROM schedules WHERE airline=?", (airline,)):
+                try:
+                    pr = json.loads(r[1] or "{}")
+                except ValueError:
+                    continue
+                if not pr.get("imported"):
+                    continue
+                legs = [dict(x) for x in c.execute("SELECT flight_number, adep, ades, dep_utc, data_origin FROM schedule_legs WHERE schedule_id=? ORDER BY dep_utc", (r[0],))]
+                for a, b in zip(legs, legs[1:]):
+                    if a["flight_number"] and b["flight_number"] and a["ades"] == b["adep"] and a["dep_utc"][:10] == b["dep_utc"][:10]:
+                        wd = date.fromisoformat(a["dep_utc"][:10]).weekday()
+                        out[a["flight_number"]][b["flight_number"]][wd] += 1
+        finally:
+            c.close()
+    except Exception:                                      # noqa: BLE001
+        log.exception("escalas importadas")
+    return {x: {y: dict(w) for y, w in ys.items()} for x, ys in out.items()}
 
 
 def analyze(data_dir, airline: str) -> dict:
@@ -109,9 +174,11 @@ def analyze(data_dir, airline: str) -> dict:
             if c["delta"] in (1, -1) and (x["obs"].get("next") or {}).get(ky, 0) >= 2:
                 sign[c["delta"]] += 1
     usual = 1 if sign[1] > sign[-1] else -1
+    real = real_successions(data_dir, airline)
     out = {}
     for kx, x in per.items():
         nxt = x["obs"].get("next") or {}
+        rx = real.get(x["ident"], {})
         ranked = []
         for ky, c in x["cands"].items():
             seen = int(nxt.get(ky, 0))
@@ -119,19 +186,33 @@ def analyze(data_dir, airline: str) -> dict:
             opp = max(1.0, weeks * both)                  # vezes em que X e Y voaram juntos no período do ADS-B
             rate = seen / opp
             pair = c["delta"] in (1, -1)
-            score = rate * 10 + (1.5 if pair else 0) + min(seen, 6) * 0.2
-            if not seen and not pair:
+            rw = rx.get(c["ident"], {})                   # visto em escala real de piloto: {dia da semana: vezes}
+            nreal = sum(rw.values())
+            score = rate * 10 + (1.5 if pair else 0) + min(seen, 6) * 0.2 + min(nreal, 3) * 2.5
+            if not seen and not pair and not nreal:
                 continue
-            conf = ("alta" if seen >= 3 and rate >= 0.5 else
-                    "média" if (seen >= 2 and rate >= 0.25) or (pair and seen >= 1) else "baixa")
-            ranked.append({"ident": c["ident"], "adep": c["adep"], "ades": c["ades"], "weekdays": sorted(c["weekdays"]),
-                           "gap_min": sorted(c["gaps"])[len(c["gaps"]) // 2], "adsb": seen, "rate": round(rate, 2),
-                           "pair": pair, "inverted": pair and c["delta"] != usual, "delta": c["delta"],
+            conf = ("alta" if (seen >= 3 and rate >= 0.5) or nreal >= 2 or (nreal and seen) else
+                    "média" if (seen >= 2 and rate >= 0.25) or (pair and seen >= 1) or nreal else "baixa")
+            wds = set(c["weekdays"]) | set(rw)
+            ranked.append({"ident": c["ident"], "adep": c["adep"], "ades": c["ades"], "weekdays": sorted(wds),
+                           "gap_min": sorted(c["gaps"])[len(c["gaps"]) // 2], "adsb": seen, "rate": round(rate, 2), "real": nreal,
+                           "real_weekdays": sorted(rw), "pair": pair, "inverted": pair and c["delta"] != usual, "delta": c["delta"],
                            "kind": "volta" if c["ades"] == x["adep"] else "segue", "confidence": conf, "score": round(score, 3)})
+        for yid, rw in rx.items():                        # continuação vista em escala real que o RPL da semana não tem na janela
+            if any(r["ident"] == yid for r in ranked):
+                continue
+            yo = next((o for o in occ if o["ident"] == yid and o["adep"] == x["ades"]), None)
+            if not yo:
+                continue
+            nreal = sum(rw.values())
+            ranked.append({"ident": yid, "adep": yo["adep"], "ades": yo["ades"], "weekdays": sorted(rw), "gap_min": None, "adsb": 0,
+                           "rate": 0.0, "real": nreal, "real_weekdays": sorted(rw), "pair": False, "inverted": False, "delta": None,
+                           "kind": "volta" if yo["ades"] == x["adep"] else "segue", "confidence": "alta" if nreal >= 2 else "média",
+                           "score": round(min(nreal, 3) * 2.5, 3), "note": "visto em escala real; o RPL desta semana não tem o voo nesse horário"})
         ranked.sort(key=lambda r: -r["score"])
         best_by_wd = {}
-        for wd in sorted(x["weekdays"]):
-            b = next((r for r in ranked if wd in r["weekdays"]), None)
+        for wd in sorted(set(x["weekdays"]) | set(w for r in ranked for w in r.get("real_weekdays", []))):
+            b = next((r for r in ranked if wd in r.get("real_weekdays", [])), None) or next((r for r in ranked if wd in r["weekdays"]), None)
             if b:
                 best_by_wd[wd] = b["ident"]
         keep = ranked[:6] + [r for r in ranked[6:] if r["ident"] in best_by_wd.values()]   # o melhor de cada dia sempre aparece
@@ -140,7 +221,8 @@ def analyze(data_dir, airline: str) -> dict:
                    "best_by_weekday": best_by_wd}
     res = {"airline": airline, "reference_week": [start.isoformat(), (start + timedelta(days=6)).isoformat()],
            "adsb_days": days_obs, "pair_sign": usual, "flights": out,
-           "source": "RPL do CGNA (semana publicada) + rodízios vistos no ADS-B (adsb.lol, ODbL)"}
+           "real_flights": len(real),
+           "source": "RPL do CGNA (semana publicada) + rodízios vistos no ADS-B (adsb.lol, ODbL) + escalas reais de pilotos"}
     with _LOCK:
         _CACHE.clear()
         _CACHE[ck] = res

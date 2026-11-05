@@ -1,0 +1,35 @@
+{
+ "_sobre": "Escalas reais de pilotos (sem nome), enviadas pelo dono do projeto, no formato que circula entre tripulantes. Usadas como evidência de continuação do avião (depois de X veio Y) e como referência de realismo. Nada aqui é inventado.",
+ "items": [
+  {
+   "airline": "TAM",
+   "month": "2026-10",
+   "base": "SBGR",
+   "note": "comandante LATAM, base GRU, narrowbody; outubro e novembro de 2026",
+   "text": "ESCALA DE OUTUBRO:\n(28) GRU-REC-PNZ-REC (3376,3371,3370)\n(29) REC-GRU (3379)\n(30) GRU-FEN-GRU (3828,3829)\n(31) GRU-PMW-GRU-RAO-GRU (4634,4635,4556,4557)\nESCALA DE NOVEMBRO :\n(01) DO\n(02) GRU-LDB-GRU-IGU (3458,3459,3202)\n(03) IGU-GRU-REC (3397,3374)\n(04) REC-GRU (3375)\n(05) CGH-BSB-FLN-BSB (3000,3430,3737)\n(06) BSB-CGH (3657)\n(07) DO\n(08) DO\n(09) DO\n(10) GRU-PUJ (8082)\n(11) PUJ-GRU (8083) +1\n(12) DO\n(13) CGH-REC-BSB-CGR (3170,3348,3408)\n(14) CGR-CGH-REC (3177,3614)\n(15) REC-FOR-REC-FOR (4796,4611,4778)\n(16) FOR-CGH-RAO-CGH (3184,3700,3701)\n(17) DO\n(18) DO\n(19) DO\n(20) RESERVA GRU\n(21) RESERVA GRU\n(22) RESERVA GRU\n(23) DO\n(24) DO\n(25) DO\n(26) DO\n(27) GRU-REC-PNZ-REC (3676,3371,3370)\n(28) REC-EZE (8160)\n(29) EZE-GRU (8023)\n(30) GRU-AEP-GRU (8138,8141)\n"
+  },
+  {
+   "airline": "AZU",
+   "month": "2026-09",
+   "base": "SBRF",
+   "type": "A20N",
+   "note": "comandante Azul A320neo, base REC; setembro de 2026",
+   "text": "ESCALA DE SETEMBRO\n(01) REC-CNF(4605)/CNF-PMW-CNF (4408,4409) +1\n(02) CNF-PVH-CNF (2612,2696) +1\n(03) CNF-STM-CNF (2755,2756) +1\n(04) CNF-REC (4604)\n(05) FR\n(06) FR\n(07) REC-BSB (2961)\n(08) BSB-VCP-REC (6596,2922)\n(09) REC-FOR-REC-THE-REC (4655,4656,4160,4161)\n(10) FR\n(11) FR\n(12) FR\n(13) REC-PNZ-REC-CGH (2715,4299,2450)\n(14) CGH-CNF-RBR-CNF (4030,4598,4599)\n(15) CNF-CPV-CNF-REC (4851,4289,2625)\n(16) FR\n(17) REC-GYN-REC (4682,2791)\n(18) REC-BSB-REC (2961,4431)\n(19) REC-SJP-REC (2448,2449)\n(20) REC-PNZ-REC-THE-REC (2715,4299,4160,4161)\n(21) FR\n(22) REC-VCP-NVT-VCP (2891,4953,2861)\n(23) VCP-POA-SCL-VCP (2080,2080,2081)\n(24) VCP-BEL (4070)\n(25) BEL-MAO-BEL-CNF (4862,4544,4577)\n(26) CNF-NAT-RAO-REC (2423,2437,2506)\n(27) REC-GIG-REC (4625,2651)\n(28) FR\n(29) FR\n(30) FR\n"
+  },
+  {
+   "airline": "TAM",
+   "month": "2026-10",
+   "base": null,
+   "note": "piloto LATAM, fim de outubro e início de novembro de 2026 (dias 01 e 02 sem número de voo)",
+   "text": "ESCALA DE OUTUBRO\n(31) FOR-PHB-FOR-MAO (3558,3559,3525)\nESCALA DE NOVEMBRO\n(01) MAO-FOR-SLZ-BSB\n(02) BSB-GRU-MGF-GRU\n(03) GRU-SLZ (4742)\n(04) SLZ-GRU (3857)\n(05) DO\n(08) DO\n(15) DO\n"
+  },
+  {
+   "airline": "TAM",
+   "month": "2026-11",
+   "base": null,
+   "type": "A20N",
+   "note": "piloto LATAM A320neo, novembro de 2026 (muitos internacionais)",
+   "text": "ESCALA DE NOVEMBRO\n(01) BSB-SCL (8108)\n(02) SCL-REC (8013)\n(03) REC-EZE (8160)\n(04) AEP-GIG-GRU-FOR (8045 3699 3252)\n(05) FR\n(06) FR\n(07) FR\n(08) FOR-JDO-GRU (4787 3831)\n(09) GRU-PUJ (8082)\n(10) PUJ-GRU (8083)\n(11) GRU-FOR (3316)\n(12) FR\n(13) FOR-GRU-BEL (3455,4596)\n(14) BEL-GRU-FLN-GRU (3229,3356,3357)\n(15) GRU-MCP-BEL (3860,3898)\n(16) BEL-BSB-FOR (3705,3730)\n(17) FOR-SCL (8124)\n(18) SCL-GRU-FOR (8105 3324)\n(19) FR\n(20) FR\n(21) FR\n(22) FOR-GRU-LIM (3317 8098)\n(23) LIM-GRU-CNF (8123 3344)\n(24) CNF-GRU-IZA-GRU-IGU (3561 3578 3579 3202)\n(25) IGU-GRU-ROS-GRU (3397 8170 8171)\n(26) GRU-ASU-SCL (1300 1324)\n(27) SCL-GRU-FOR (8105 3324)\n(28) FR\n(29) FR\n(30) FR\n"
+  }
+ ]
+}

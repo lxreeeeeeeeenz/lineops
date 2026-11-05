@@ -201,7 +201,7 @@ function contLine(c, base) {
   if (c.source === "regra") return h("span", {}, chip("sua regra", "hold"), " ", c.to_airport ? `segue para ${c.to_airport}` : `segue no ${c.ident}`, c.note ? h("span", {class: "muted"}, ` · ${c.note}`) : null);
   if (!c.ident) return h("span", {class: "muted"}, `Sem continuação vista naquele dia: o avião costuma pernoitar em ${base} (${c.nights} de ${c.observed} vezes no ADS-B).`);
   return h("span", {}, chip(`confiança ${c.confidence}`, CONF_CLS[c.confidence]), " ", c.kind === "volta" ? "volta no " : "segue no ", h("b", {}, c.ident),
-    ` ${c.adep}→${c.ades} · ${c.gap_min} min de solo`, h("span", {class: "muted"}, ` · ADS-B ${c.adsb}×${c.pair ? ` · par ${c.delta > 0 ? "+" : "−"}1${c.inverted ? " (invertido)" : ""}` : ""}`));
+    ` ${c.adep}→${c.ades}${c.gap_min != null ? ` · ${c.gap_min} min de solo` : ""}`, h("span", {class: "muted"}, ` · ADS-B ${c.adsb}×${c.real ? ` · escala real ${c.real}×` : ""}${c.pair ? ` · par ${c.delta > 0 ? "+" : "−"}1${c.inverted ? " (invertido)" : ""}` : ""}`));
 }
 function contDayPanel(d) {
   const fl = (d.legs || []).filter(l => l.is_flight !== false && l.flight_number);
@@ -254,15 +254,16 @@ view("continuacoes", async main => {
       put(res, r.items.length ? r.items.map(x => h("div", {class: "panel", style: "margin-top:14px"},
         h("div", {class: "panel-head"}, h("h2", {}, `${x.ident} · ${x.adep} → ${x.ades}`),
           h("span", {class: "muted", style: "font-size:12.5px"}, `voa ${wdText(x.weekdays)} · visto ${x.observed}× no ADS-B${x.nights ? ` · pernoitou ${x.nights}×` : ""}`)),
-        x.candidates.length ? h("div", {class: "tbl"}, h("table", {}, h("thead", {}, h("tr", {}, ["Continuação", "Trecho", "Dias de partida do " + x.ident, "Solo", "ADS-B", "Pista", "Confiança"].map(t => h("th", {}, t)))),
+        x.candidates.length ? h("div", {class: "tbl"}, h("table", {}, h("thead", {}, h("tr", {}, ["Continuação", "Trecho", "Dias de partida do " + x.ident, "Solo", "ADS-B", "Escala real", "Pista", "Confiança"].map(t => h("th", {}, t)))),
           h("tbody", {}, x.candidates.map(c => h("tr", {}, h("td", {}, h("b", {}, c.ident)), h("td", {class: "t"}, `${c.adep}→${c.ades}${c.kind === "volta" ? " (volta)" : ""}`),
-            h("td", {}, wdText(c.weekdays)), h("td", {class: "n"}, `${c.gap_min} min`), h("td", {class: "n"}, `${c.adsb}× · ${Math.round(c.rate * 100)}%`),
+            h("td", {}, wdText(c.weekdays)), h("td", {class: "n"}, c.gap_min != null ? `${c.gap_min} min` : "—"), h("td", {class: "n"}, `${c.adsb}× · ${Math.round(c.rate * 100)}%`),
+            h("td", {title: c.note || ""}, c.real ? h("span", {}, chip(`${c.real}×`, "go"), " ", h("span", {class: "muted"}, wdText(c.real_weekdays))) : "—"),
             h("td", {}, c.pair ? `par ${c.delta > 0 ? "+" : "−"}1${c.inverted ? " · invertido" : ""}` : "—"), h("td", {}, chip(c.confidence, CONF_CLS[c.confidence])))))))
           : h("p", {class: "muted"}, "Nenhuma continuação no RPL nem no ADS-B: o avião costuma pernoitar ou trocar de voo depois de mais de 4 h."),
         x.rules.length ? h("p", {}, chip("sua regra", "hold"), " ", x.rules.map(r => `${r.to_ident.startsWith("@") ? "qualquer voo para " + r.to_ident.slice(1) : r.to_ident} (${wdText(r.weekdays)})`).join("; ")) : null,
         h("button", {class: "btn ghost sm", onclick: () => { f.from.value = x.ident; f.to.focus(); f.to.scrollIntoView({behavior: "smooth", block: "center"}); }}, "Cadastrar continuação deste voo")))
         : h("p", {class: "muted", style: "margin-top:12px"}, "Nenhum voo encontrado na semana publicada do RPL."),
-        h("p", {class: "fine", style: "margin-top:12px"}, `Semana de referência do RPL: ${dmy(r.reference_week[0])} a ${dmy(r.reference_week[1])} · ${r.adsb_days} dias de ADS-B · ${r.source}. ADS-B “2× · 27%”: visto 2 vezes, em 27% das vezes em que os dois voos existiam no período. Par ±1: numeração de ida e volta; invertido = o sentido menos comum na companhia.`));
+        h("p", {class: "fine", style: "margin-top:12px"}, `Semana de referência do RPL: ${dmy(r.reference_week[0])} a ${dmy(r.reference_week[1])} · ${r.adsb_days} dias de ADS-B · ${r.source}. ADS-B “2× · 27%”: visto 2 vezes, em 27% das vezes em que os dois voos existiam no período. Par ±1: numeração de ida e volta; invertido = o sentido menos comum na companhia. Escala real: a continuação apareceu em escala de piloto de verdade (as de referência da LineOps e as que você importar em Gerar escala › Importar escala real); vale mais que a estimativa.`));
     } catch (e) { put(res, note("stop", "alerta", e.message)); }
   };
   q.addEventListener("keydown", e => { if (e.key === "Enter") search(); });
@@ -3602,7 +3603,10 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.2b7": [
+const NEWS = {"3.0.2b8": [
+  ["Escalas reais de pilotos", "4 escalas de LATAM e 1 da Azul (set–nov/2026) viraram referência: o perfil de realismo foi recalibrado e as continuações do avião vistas nelas (ex.: TAM3376 → TAM3371 Petrolina na quarta) entram com confiança alta, por cima da estimativa do RPL."],
+  ["Importar escala real", "Aceita números separados por espaço (8045 3699 3252) e blocos separados por barra (REC-CNF(4605)/CNF-PMW-CNF (4408,4409) +1). O que você importar também vira evidência de continuação."]],
+  "3.0.2b7": [
   ["Pernoites no Discord seguem a escala", "Ajustes › Discord: “Pernoites automáticos”. A cada atualização da escala (gerar, troca aprovada, corte, INATIVO tirado), todo pernoite fora da base é enviado sozinho; os avisos já enviados são editados quando o voo muda e apagados quando o voo sai da escala. Botão “Sincronizar agora” para forçar."],
   ["Gerar escala mais simples", "Só o essencial à vista (período, tripulante, seu pedido); aeroportos, pernas, regras e reserva ficam em “Opções avançadas”. O botão Gerar acompanha a rolagem."],
   ["Biblioteca técnica e MEL", "Importe os seus PDF (MEL, CDL, QRH). A MEL é lida item a item e a discrepância pode ser aberta pelo item, com prazo pela categoria."]],

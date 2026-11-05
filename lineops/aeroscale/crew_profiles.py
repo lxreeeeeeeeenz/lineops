@@ -1,7 +1,7 @@
 """Perfis de escala do tripulante por companhia (v2.2).
 
-Calibrados com escalas reais de comandante enviadas pelo usuário (3 da Azul, base REC; 1 da LATAM, base GRU;
-novembro/2026) e com a pesquisa sobre escalas nas três companhias (SNA, ANAC, imprensa). A GOL não tem escala de
+Calibrados com escalas reais de piloto enviadas pelo usuário (4 da Azul, base REC; 4 da LATAM, base GRU;
+setembro a novembro/2026; as mais novas estão em data/escalas_reais.json) e com a pesquisa sobre escalas nas três companhias (SNA, ANAC, imprensa). A GOL não tem escala de
 referência: usa o padrão médio das outras duas.
 
 O que cada perfil controla (só no modo tripulante, com "realismo das escalas reais" ligado):
@@ -38,8 +38,8 @@ PROFILES = {
     "AZU": {
         **DEFAULT,
         "label": "Azul",
-        # 3 escalas de comandante (47 dias de voo): 1 perna 17%, 2 30%, 3 40%, 4 11%, 5 2%
-        "legs_prior": {1: 0.17, 2: 0.30, 3: 0.40, 4: 0.11, 5: 0.02},
+        # 4 escalas de comandante (67 dias de voo): 1 perna 16%, 2 31%, 3 40%, 4 11%, 5 2%
+        "legs_prior": {1: 0.16, 2: 0.31, 3: 0.40, 4: 0.11, 5: 0.02},
         "off_code": "FR", "sobreaviso_code": "SOBREAVISO", "inactive_code": "INATIVO EM",
         "dhd_style": "suffix",
         # ônibus da Azul entre Viracopos e São Paulo: a escala termina em VCP e recomeça em CGH no dia seguinte
@@ -48,18 +48,19 @@ PROFILES = {
         "sobreaviso_per_month": 1,
         "inactive_mid_trip_pct": 15,   # 2 inativos em 1 das 3 escalas reais
         "report_min": 50,              # apresentação da Azul: 50 min
-        "source": "3 escalas reais de comandante Azul (base REC)",
+        "source": "4 escalas reais de comandante Azul (base REC)",
     },
     "TAM": {
         **DEFAULT,
         "label": "LATAM",
-        # 1 escala real (13 dias, com 4 pernas internacionais longas) misturada à média: dias de 1 perna são comuns
-        "legs_prior": {1: 0.25, 2: 0.30, 3: 0.33, 4: 0.10, 5: 0.02},
+        # 4 escalas reais (57 dias de voo; nov/2026 e out–nov/2026, narrowbody e A320neo com internacionais):
+        # 1 perna 33%, 2 30%, 3 31%, 4 5%. Dias de 1 perna são comuns (internacional longo, ou ida e pernoite)
+        "legs_prior": {1: 0.33, 2: 0.30, 3: 0.31, 4: 0.05, 5: 0.01},
         "off_code": "DO", "dhd_style": "prefix",
         "sobreaviso_per_month": 0,      # a escala de referência tem reserva em bloco de 3 dias, sem sobreaviso
         "inactive_mid_trip_pct": 5,
         "long_off_block": (5, 6),
-        "source": "1 escala real de comandante LATAM (base GRU) + média",
+        "source": "4 escalas reais de pilotos LATAM (base GRU; narrowbody e A320neo)",
     },
     "GLO": {
         **DEFAULT,
@@ -77,7 +78,7 @@ REFERENCE = {
     "pct_1leg": (0.10, 0.46),            # dias com 1 perna
     "max_off_block": (3, 12),            # maior bloco de folga do mês
     "nights_out": (7, 12),               # pernoites fora da base no mês
-    "n": 4,
+    "n": 8,
 }
 
 

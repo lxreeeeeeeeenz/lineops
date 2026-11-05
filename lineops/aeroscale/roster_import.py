@@ -99,13 +99,15 @@ def _body(body: str, warns: list, n_line: int) -> dict:
     if md:
         return {"kind": "dhd", "numbers": [x for x in re.split(r"[ ,]+", md.group(1)) if x]}
     segs = []
-    for part in [x.strip() for x in b.split(" / ") if x.strip()]:
-        ms = re.match(r"^([A-Z]{3,4}(?:\s*-\s*[A-Z]{3,4})+)\s*(\+1)?\s*(?:\(([^)]*)\))?\s*(\+1)?\s*(DHD)?$", part)
+    # "REC-CNF(4605)/CNF-PMW-CNF (4408,4409) +1": blocos separados por "/" (com ou sem espaço), números entre
+    # parênteses colados ou não ao trecho, separados por vírgula OU espaço ("8045 3699 3252")
+    for part in [x.strip() for x in re.split(r"\s*/\s*", b) if x.strip()]:
+        ms = re.match(r"^([A-Z]{3,4}(?:\s*-\s*[A-Z]{3,4})+)\s*(\+1)?\s*(?:\(([^)]*)\)?)?\s*(\+1)?\s*(DHD)?$", part)
         if not ms:
             warns.append(f"Linha {n_line}: trecho não entendido: {part[:50]}")
             continue
         route = [x.strip() for x in ms.group(1).split("-")]
-        toks = [t.strip() for t in (ms.group(3) or "").split(",") if t.strip()]
+        toks = [t.strip() for t in re.split(r"[,;\s]+", ms.group(3) or "") if t.strip()]
         nums, dh = [], []
         for t in toks:
             is_dh = "DH" in t or bool(ms.group(5))

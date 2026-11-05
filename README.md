@@ -10,6 +10,19 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.2 beta 8
+
+* **Escalas reais de pilotos como referência.** Quatro escalas da LATAM e uma da Azul (setembro a novembro de 2026,
+  sem nome de ninguém) ficam em `lineops/aeroscale/data/escalas_reais.json` e são usadas em dois lugares:
+  * **Continuações do avião:** uma continuação que aparece numa escala real (ex.: TAM3376 GRU→REC seguido do TAM3371
+    REC→PNZ numa quarta; TAM3676 → TAM3371 numa sexta) entra com confiança alta, por cima da estimativa do RPL e do
+    ADS-B, e aparece na coluna "Escala real" com os dias em que foi vista. As escalas que você importar em Gerar escala
+    › Importar escala real contam do mesmo jeito.
+  * **Perfil de realismo:** pernas por dia da LATAM recalibradas com 57 dias de voo (1 perna 33%, 2 30%, 3 31%, 4 5%);
+    Azul com 67 dias.
+* **Importar escala real** aceita números separados por espaço (`AEP-GIG-GRU-FOR (8045 3699 3252)`) e blocos separados
+  por barra (`REC-CNF(4605)/CNF-PMW-CNF (4408,4409) +1`). Testado com as cinco escalas acima: todas entram inteiras.
+
 ## Novidades da 3.0.2 beta 7
 
 * **Os avisos de pernoite no Discord seguem a escala.** Ajustes › Discord › "Pernoites automáticos": a cada atualização
@@ -441,7 +454,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.2b7.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.2b8.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não
