@@ -174,3 +174,31 @@ def test_pilot_code_follows_the_career_and_avatar_only_for_cmdt079():
     f = avatar.of({"username": "cmdt079"})
     assert f and f.read_bytes()[:2] == b"\xff\xd8"                                   # JPEG
     assert avatar.of({"username": "CMDT079 "}) == f and avatar.of({"username": "piloto"}) is None
+
+
+def test_marked_flight_sets_the_overnight_airport(eng, tmp_path):  # noqa: F811
+    """3.0.2b4: marcou “ESSE VOO É PERNOITE” num voo que a escala não vê como pernoite: o dia (e o mês) passam a pernoitar
+    no destino dele."""
+    from lineops import visao
+    data, career = eng
+    _run(data, career, {**BASE, "seed": 3})
+    p = tmp_path / "GLO.db"
+    shutil.copy(career, p)
+    c = db.connect(p)
+    user = {"id": 1, "username": "piloto"}
+    pernoite.set_webhook(c, user, HOOK)
+    day = next(d for d in (journey.day(c, f"2026-11-{k:02d}") for k in range(1, 31))
+               if len([l for l in d["legs"] if l["is_flight"]]) >= 2)
+    leg = [l for l in day["legs"] if l["is_flight"]][0]                              # o primeiro voo do dia: não é pernoite
+    assert leg["ades"] != (day["overnight"] or {}).get("at", {}).get("icao")
+    pernoite.mark(c, c, user, leg["id"], opener=FakeDiscord())
+    d2 = journey.day(c, day["date"])
+    pernoite.apply_marks(c, d2, pernoite.status_for(c, [l["id"] for l in d2["legs"]]))
+    assert d2["overnight"]["at"]["icao"] == leg["ades"] and d2["overnight"]["marked"]
+    m = next(x for x in visao.month(c, day["date"][:7])["days"] if x["date"] == day["date"])
+    assert m["overnight_at"] == leg["ades"]
+    pernoite.unmark(c, c, user, leg["id"], opener=FakeDiscord())
+    d3 = journey.day(c, day["date"])
+    pernoite.apply_marks(c, d3, pernoite.status_for(c, [l["id"] for l in d3["legs"]]))
+    assert d3["overnight"] == day["overnight"]                                       # desmarcou: volta ao que a escala diz
+    c.close()

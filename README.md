@@ -10,6 +10,30 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.2 beta 4
+
+* **Continuações do avião na geração, sozinhas.** Depois de cada voo, o gerador segue para onde o avião costuma ir
+  (por exemplo, o TAM3376 GRU→REC segue para Petrolina em alguns dias). Não precisa cadastrar nada.
+  * **De onde vem:** o RPL do CGNA (o que sai do mesmo aeroporto de 25 a 240 min depois da chegada) e os rodízios vistos
+    no ADS-B (26 dias do adsb.lol). Cada continuação tem confiança alta, média ou baixa. Sem dado, não entra.
+  * **Força das continuações** (slider em Gerar escala, padrão 70):
+    * 0 desliga tudo.
+    * Acima de 0, entram as de confiança alta; a partir de 30, as médias; a partir de 80, as baixas.
+    * Cada vez que o voo aparece, a continuação é obrigatória com chance = força × peso da confiança (alta 1, média
+      0,85, baixa 0,6). Na força 100, a de confiança alta vem sempre. O sorteio usa a semente da escala: mesma semente,
+      mesma escala.
+    * O diagnóstico da escala diz quantas vezes a continuação foi seguida. Quando o seu dia acaba no voo (fim da
+      jornada, folga, fim do período), o avião segue com outra tripulação: isso não é erro.
+  * **Pares invertidos:** ida e volta costumam ter números vizinhos (3376/3375). A LineOps mede o sentido mais comum de
+    cada companhia e marca o par que vai ao contrário como "invertido".
+  * **Suas continuações** (opcional): Ctrl + K › "Continuações". "Depois do 3376 segue o 3262" ou "segue para qualquer
+    voo para PNZ", em todos os dias ou só em alguns. As suas valem sempre, por cima da estimativa.
+* **Pernoite marcado manda no dia:** marcou "ESSE VOO É PERNOITE"? O pernoite do dia passa a ser no destino desse voo,
+  na hora: resumo do dia, hotel, carro, despertar e calendário do mês.
+* **Bogotá (BOG) e outros aeroportos de fora** agora são reconhecidos pelo código IATA no pernoite e nas trocas.
+  Atenção: nem o RPL nem o ADS-B têm voos da GOL, LATAM ou Azul para Bogotá no período, então a escala não consegue
+  pernoitar lá (e diz isso, em vez de inventar um voo).
+
 ## Novidades da 3.0.1
 
 * **Cabine noturna (visual novo).**
@@ -380,7 +404,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.1.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.2b4.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

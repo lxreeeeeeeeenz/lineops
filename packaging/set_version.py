@@ -7,7 +7,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import lineops  # noqa: E402
 
 v = lineops.__version__
-nums = (v.split(".") + ["0"] * 4)[:4]
+nums = (re.findall(r"\d+", v) + ["0"] * 4)[:4]          # 3.0.2b4 → 3, 0, 2, 4
 p = pathlib.Path(__file__).with_name("version_info.txt")
 s = p.read_text(encoding="utf-8")
 s = re.sub(r"filevers=\([^)]*\)", "filevers=(%s)" % ", ".join(nums), s)

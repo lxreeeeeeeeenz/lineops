@@ -224,6 +224,27 @@ def status_for(conn, leg_ids) -> dict:
     return out
 
 
+def apply_marks(conn, d: dict, posts: dict) -> dict:
+    """O voo que você marcou como pernoite manda no dia: o pernoite (e o hotel, o carro e o resumo) passa a ser no destino
+    dele, mesmo que a escala não detecte pernoite ali (fim da escala, solo curto, voo do meio do dia)."""
+    from . import journey
+    sent = [l for l in d.get("legs") or [] if (posts.get(str(l["id"])) or {}).get("state") == "ENVIADO"]
+    if not sent:
+        return d
+    leg = sent[-1]
+    ov = d.get("overnight")
+    if ov and ov["at"] and ov["at"].get("icao") == leg["ades"]:
+        ov["marked"] = True
+        return d
+    base = (d.get("base") or {}).get("icao")
+    nd = d.get("next_duty") or {}
+    d["overnight"] = {"at": journey.place(conn, leg["ades"]), "from_utc": leg["arr_utc"],
+                      "until_utc": nd.get("report_utc"), "minutes": None, "kind": "marcado", "label": "Pernoite",
+                      "detail": "marcado por você (ESSE VOO É PERNOITE)", "at_base": bool(base) and leg["ades"] == base,
+                      "marked": True, "detected": ov, "source": "você marcou este voo como pernoite"}
+    return d
+
+
 def mark(conn, core, user, leg_id: int, *, color: int | None = None, opener=None, now: str | None = None) -> dict:
     """Marca a perna como pernoite e manda a mensagem para a webhook. Marcar de novo reenvia (edita a mensagem)."""
     _require(user)

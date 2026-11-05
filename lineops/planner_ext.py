@@ -16,6 +16,31 @@ from . import cargo
 from .pernoite import FIXED_OFF, sleep_at
 
 
+# o mapa de continuações tem centenas de KB: nos parâmetros da escala (que o AeroScale grava inteiros) vai só uma ficha
+_FOLLOW: dict = {}
+_FOLLOW_LOCK = threading.Lock()
+
+
+def follow_stash(m: dict) -> str:
+    import uuid
+    k = "cont:" + uuid.uuid4().hex[:10]
+    with _FOLLOW_LOCK:
+        _FOLLOW[k] = m
+    return k
+
+
+def follow_get(v) -> dict:
+    if isinstance(v, str):
+        return _FOLLOW.get(v) or {}
+    return v or {}
+
+
+def follow_drop(v):
+    if isinstance(v, str):
+        with _FOLLOW_LOCK:
+            _FOLLOW.pop(v, None)
+
+
 def _make_planner_class(base_cls):
     from .aeroscale import crew, crew_profiles
     from .aeroscale.airports import get_tz, to_local
@@ -24,8 +49,107 @@ def _make_planner_class(base_cls):
         """O Planner do AeroScale com dois ajustes da LineOps: pernoite pedido (must_end no dia da noite pedida) e voos de
         carga fora do sorteio (a não ser que você peça)."""
 
+        # ---- continuações (3.0.2 beta): depois de X vem Y, se Y existir naquele dia e couber
+        def _follow(self) -> dict:
+            return follow_get(self.p.get("follow"))
+
+        def _cont_targets(self, ap: str, y: str) -> list:
+            """As ocorrências do pool que saem de ap e servem como continuação y (voo ou @destino), em ordem de partida."""
+            cache = self.__dict__.setdefault("_lo_targets", {})
+            k = (ap, y)
+            if k not in cache:
+                cache[k] = [o for o in self._occ_by_adep.get(ap, [])
+                            if (y.startswith("@") and o["ades"] == y[1:]) or o.get("ident") == y]
+            return cache[k]
+
+        def _cont_entry(self, a: dict):
+            """A continuação que vale para esta ocorrência de a (já com o sorteio da força), ou None."""
+            from .continuacao import entry, roll
+            rule = self._follow().get(a.get("ident") or "")
+            e = entry(rule.get(str(a["dep"].weekday()))) if rule else None
+            if not e:
+                return None
+            if e["p"] < 1:
+                rolls = self.__dict__.setdefault("_lo_rolls", {})
+                k = (a.get("ident"), a["dep"].date())
+                if k not in rolls:
+                    rolls[k] = roll(self.p.get("seed"), a.get("ident") or "", a["dep"].date())
+                if rolls[k] >= e["p"]:
+                    return None                            # identificada, mas a força sorteou "livre" desta vez
+            return e
+
+        def _must_next(self, a: dict) -> set:
+            """As ocorrências que podem vir depois de a (vazio = sem regra para hoje). A regra é um voo (TAM3262) ou um
+            destino (@SBPL: qualquer voo para Petrolina); vale só se existir de verdade no RPL, saindo do destino de a
+            entre 25 min e 4 h depois do calço."""
+            from .continuacao import GAP_MAX, GAP_MIN
+            e = self._cont_entry(a)
+            if not e:
+                return set()
+            lo, hi = a["arr"] + timedelta(minutes=GAP_MIN), a["arr"] + timedelta(minutes=GAP_MAX)
+            taken = getattr(self, "taken", set())
+            return {o["ref"] for o in self._cont_targets(a["ades"], e["to"]) if lo <= o["dep"] <= hi and o["ref"] not in taken}
+
+        def chain_ok(self, chain) -> bool:
+            if self._follow():
+                for a, b in zip(chain, chain[1:]):
+                    ok = self._must_next(a)
+                    if ok and b.get("ref") not in ok:
+                        return False                       # depois de X só pode vir a continuação
+            return super().chain_ok(chain)
+
+        def _pick(self, finals):
+            if self._follow():
+                ok = [f for f in finals if not (f[0] and self._must_next(f[0][-1]))]
+                if ok:                                     # o dia não termina em X quando Y existe (o avião segue)
+                    finals = ok
+            return super()._pick(finals)
+
+        def ops(self):
+            """Faz a continuação obrigatória entrar primeiro na busca (como um sucessor muito visto no ADS-B)."""
+            o = super().ops()
+            if not self._follow() or getattr(o, "_lineops_follow", False):
+                return o
+            base_flight = o.flight
+            planner = self
+
+            from .aeroscale.predict import OBS_MIN_N
+            from .continuacao import entry
+            def flight(ident, adep, ades):
+                memo = planner.__dict__.setdefault("_lo_memo", {})
+                k0 = (ident, adep, ades)
+                if k0 in memo:
+                    return memo[k0]
+                f = base_flight(ident, adep, ades)
+                rule = planner._follow().get(ident or "")
+                if rule:
+                    # como um sucessor visto no ADS-B: a sua regra conta como "sempre visto" (n de n), a identificada
+                    # como p × n. Nunca acima de n: o modelo de rodízio do AeroScale usa a fração vezes/n.
+                    n = max(int((f or {}).get("n") or 0), OBS_MIN_N)
+                    extra = {}
+                    for v in rule.values():
+                        e = entry(v)
+                        w = n if e["src"] == "regra" else max(1, min(n, round(e["p"] * n)))
+                        for x in planner._cont_targets(ades, e["to"]):
+                            k = f"{x.get('ident')}:{x['adep']}-{x['ades']}"
+                            extra[k] = max(extra.get(k, 0), w)
+                    if extra:
+                        g = dict(f or {"n": 0, "night": 0, "first": 0, "next": {}})
+                        nxt = dict(g.get("next") or {})
+                        for k, w in extra.items():
+                            nxt[k] = max(int(nxt.get(k, 0)), w)
+                        g["n"], g["next"] = n, nxt
+                        f = g
+                memo[k0] = f
+                return f
+            o.flight = flight
+            o._lineops_follow = True
+            return o
+
         def build_pool(self, d1, d2):
             super().build_pool(d1, d2)
+            self.__dict__.pop("_lo_targets", None)
+            self.__dict__.pop("_lo_memo", None)
             if self.p.get("include_cargo"):
                 return
             cut = 0
@@ -145,7 +269,7 @@ _PATCH_LOCK = threading.RLock()
 def planner_for(params: dict):
     """Enquanto gera, o scheduler do AeroScale usa o Planner da LineOps (pernoite pedido e filtro de carga)."""
     from .aeroscale import scheduler
-    if not params.get("overnights") and not cargo.applies(params.get("airline"), params.get("include_cargo")):
+    if not params.get("overnights") and not params.get("follow") and not cargo.applies(params.get("airline"), params.get("include_cargo")):
         yield
         return
     with _PATCH_LOCK:

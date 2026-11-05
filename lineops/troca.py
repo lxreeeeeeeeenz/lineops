@@ -449,6 +449,9 @@ def resolve_airport(conn, code: str) -> str | None:
         return code if rules.airport(conn, code) else None
     if len(code) == 3:
         hit = next((k for k, v in rules.airport_map(conn).items() if (v.get("iata") or "").upper() == code), None)
+        if not hit:                                   # fora do Brasil (ex.: BOG): o catálogo mundial do AeroScale
+            from .aeroscale.airport_geo_world import WORLD_AIRPORTS
+            hit = next((k for k, v in WORLD_AIRPORTS.items() if (v[0] or "").upper() == code), None)
         return hit
     return None
 

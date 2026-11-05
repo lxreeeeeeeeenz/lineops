@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, estatisticas, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
+from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, continuacao, estatisticas, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
                careers, carreira, enroute, equipe, externos, feed, ivao, motor, notify, stay, tripulacao, loadsheet as ls_mod, logs, validity, manual, network, ofp as ofp_mod, payroll, pireps, rules, security, troca, posicao, visao)
 from .db import audit, connect, migrate, now_iso, one, pending, rows, tx
 from .errors import FGVError, NotFound
@@ -399,6 +399,8 @@ def create_app(data_dir: str | Path) -> FastAPI:
     def today(u=Depends(auth), conn=Depends(get_db)):
         equipe.run(conn)
         d = journey.today_overview(conn)
+        if pernoite.enabled_for(u) and d.get("legs"):
+            pernoite.apply_marks(conn, d, pernoite.status_for(conn, [l["id"] for l in d["legs"] if l.get("id")]))
         d["messages"] = equipe.messages(conn, limit=6)
         d["message_counts"] = equipe.counts(conn)
         d["pilot"] = {"display_name": u["display_name"], "pilot_code": u["pilot_code"]}
@@ -418,6 +420,7 @@ def create_app(data_dir: str | Path) -> FastAPI:
         d["swaps"] = troca.for_legs(conn, [l["id"] for l in d["legs"]])
         if pernoite.enabled_for(u):
             d["overnight_posts"] = pernoite.status_for(conn, [l["id"] for l in d["legs"]])
+            pernoite.apply_marks(conn, d, d["overnight_posts"])
         return d
 
     # ----------------------------------------------------------------- aviso de pernoite no Discord (usuário cmdt079)
@@ -781,6 +784,30 @@ def create_app(data_dir: str | Path) -> FastAPI:
     def motor_generate(b: dict = Body(...), u=Depends(session_only), core=Depends(get_core)):
         return motor.generate(data_dir, u["career"], b, careers.career_path(data_dir, u["career"]), user_id=u["id"],
                               share_stats=estatisticas.share_enabled(core))
+
+    # ----------------------------------------------------------------- continuações (beta)
+    @app.get("/api/continuacoes")
+    def continuations(q: str = "", u=Depends(auth), conn=Depends(get_db)):
+        return continuacao.lookup(conn, data_dir, u["career"], q)
+
+    @app.get("/api/continuacoes/dia/{date}")
+    def continuations_day(date: str, u=Depends(auth), conn=Depends(get_db)):
+        _check_date(date)
+        return {str(l["id"]): continuacao.for_leg(conn, data_dir, l) for l in journey.legs_of_day(conn, date) if l["is_flight"]}
+
+    @app.get("/api/continuacoes/regras")
+    def continuation_rules(u=Depends(auth), conn=Depends(get_db)):
+        return continuacao.rules_list(conn, u["career"])
+
+    @app.post("/api/continuacoes/regras")
+    def continuation_rule_add(b: dict = Body(...), u=Depends(session_only), conn=Depends(get_db)):
+        if set(b) - {"from", "to", "weekdays", "note"}:
+            raise FGVError("Campos desconhecidos.", code="campo_invalido")
+        return continuacao.rule_add(conn, u["career"], b.get("from") or "", b.get("to") or "", b.get("weekdays") or [], b.get("note"))
+
+    @app.delete("/api/continuacoes/regras/{rid}")
+    def continuation_rule_del(rid: int, u=Depends(session_only), conn=Depends(get_db)):
+        return continuacao.rule_delete(conn, rid)
 
     # ----------------------------------------------------------------- estatísticas
     @app.get("/api/estatisticas")

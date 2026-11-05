@@ -192,6 +192,88 @@ async function render() {
 let lastHash = "";
 addEventListener("hashchange", render);
 
+/* ───────────────────────── continuações (beta) ───────────────────────── */
+const WDN = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+const wdText = w => !w || !w.length || w.length === 7 ? "todos os dias" : w.map(x => WDN[x]).join(", ");
+const CONF_CLS = {alta: "go", "média": "cool", baixa: "", regra: "hold"};
+function contLine(c, base) {
+  if (!c) return null;
+  if (c.source === "regra") return h("span", {}, chip("sua regra", "hold"), " ", c.to_airport ? `segue para ${c.to_airport}` : `segue no ${c.ident}`, c.note ? h("span", {class: "muted"}, ` · ${c.note}`) : null);
+  if (!c.ident) return h("span", {class: "muted"}, `Sem continuação vista naquele dia: o avião costuma pernoitar em ${base} (${c.nights} de ${c.observed} vezes no ADS-B).`);
+  return h("span", {}, chip(`confiança ${c.confidence}`, CONF_CLS[c.confidence]), " ", c.kind === "volta" ? "volta no " : "segue no ", h("b", {}, c.ident),
+    ` ${c.adep}→${c.ades} · ${c.gap_min} min de solo`, h("span", {class: "muted"}, ` · ADS-B ${c.adsb}×${c.pair ? ` · par ${c.delta > 0 ? "+" : "−"}1${c.inverted ? " (invertido)" : ""}` : ""}`));
+}
+function contDayPanel(d) {
+  const fl = (d.legs || []).filter(l => l.is_flight !== false && l.flight_number);
+  if (!fl.length) return null;
+  const box = h("div", {class: "panel"}, h("div", {class: "panel-head"}, h("h2", {}, "Continuações do avião (beta)"), h("a", {href: "#/continuacoes", class: "muted", style: "font-size:13px"}, "ver todas")), skeleton("s"));
+  get(`/api/continuacoes/dia/${d.date}`).then(m => {
+    if (!box.isConnected) return;
+    put(box, h("div", {class: "panel-head"}, h("h2", {}, "Continuações do avião (beta)"), h("a", {href: "#/continuacoes", class: "muted", style: "font-size:13px"}, "ver todas")),
+      h("div", {class: "cont-list"}, fl.map(l => h("div", {class: "cont-row"}, h("b", {class: "mono"}, l.flight_number), h("span", {class: "muted mono"}, `${l.adep}→${l.ades}`),
+        h("div", {}, contLine(m[String(l.id)], l.ades) || h("span", {class: "muted"}, "Sem dados de rodízio para este voo."))))),
+      h("p", {class: "fine"}, "Depois deste voo, para onde o avião costuma seguir: o RPL (voos que saem dali até 4 h depois) cruzado com os rodízios vistos no ADS-B. É estimativa, não escala."));
+  }).catch(() => box.remove());
+  return box;
+}
+const cont = {q: ""};
+view("continuacoes", async main => {
+  const car = me.career || {};
+  const q = h("input", {placeholder: `Voo (3376 ou ${car.code}3376) ou trecho (REC, GRU-REC)`, value: cont.q});
+  const res = h("div", {});
+  const rulesBox = h("div", {class: "panel"}, h("h2", {}, "Suas continuações"), skeleton("s"));
+  const f = {from: h("input", {placeholder: "ex. 3376"}), to: h("input", {placeholder: "voo (3262) ou destino (PNZ)"}), note: h("input", {placeholder: "ex. o piloto disse"})};
+  const wds = new Set();
+  const wdBox = h("div", {class: "tools"});
+  const paintWd = () => put(wdBox, WDN.map((n, k) => h("button", {type: "button", class: "chip" + (wds.has(k) ? " on" : ""), onclick: () => { wds.has(k) ? wds.delete(k) : wds.add(k); paintWd(); }}, n)));
+  paintWd();
+  const loadRules = async () => {
+    const rs = await get("/api/continuacoes/regras");
+    put(rulesBox, h("h2", {}, "Suas continuações"),
+      h("p", {class: "fine", style: "margin-top:2px"}, "O gerador já usa as continuações identificadas sozinho, na força escolhida em Gerar escala (padrão 70). As que você cadastrar aqui (ou o piloto disse) valem sempre, por cima da estimativa: quando o voo entra na escala e a continuação existe naquele dia, ela vem em seguida. Destino (PNZ) aceita qualquer voo para lá."),
+      rs.length ? h("div", {class: "cont-list"}, rs.map(r => h("div", {class: "cont-row"}, h("b", {class: "mono"}, r.from_ident),
+        h("span", {}, "→ ", h("b", {}, r.to_ident.startsWith("@") ? `qualquer voo para ${r.to_ident.slice(1)}` : r.to_ident)),
+        h("span", {class: "muted"}, `${wdText(r.weekdays)}${r.note ? " · " + r.note : ""}`),
+        h("button", {class: "btn ghost sm", onclick: async () => { if (await act(() => api("DELETE", `/api/continuacoes/regras/${r.id}`), "Regra apagada")) loadRules(); }}, "Apagar"))))
+        : h("p", {class: "muted"}, "Nenhuma ainda."),
+      h("div", {class: "hr"}),
+      h("div", {class: "row"}, field("Depois do voo", f.from), field("Segue para", f.to)),
+      h("div", {class: "f"}, h("span", {}, "Dias de partida do voo (nenhum = todos)"), wdBox),
+      field("Nota (opcional)", f.note),
+      h("button", {class: "btn sm", onclick: async () => {
+        const r = await act(() => post("/api/continuacoes/regras", {from: f.from.value, to: f.to.value, weekdays: [...wds], note: f.note.value}), "Continuação cadastrada");
+        if (r) { f.from.value = f.to.value = f.note.value = ""; wds.clear(); paintWd(); loadRules(); }
+      }}, "Cadastrar"));
+  };
+  const search = async () => {
+    cont.q = q.value.trim();
+    if (!cont.q) return put(res);
+    put(res, skeleton("l"));
+    try {
+      const r = await get(`/api/continuacoes?q=${encodeURIComponent(cont.q)}`);
+      put(res, r.items.length ? r.items.map(x => h("div", {class: "panel", style: "margin-top:14px"},
+        h("div", {class: "panel-head"}, h("h2", {}, `${x.ident} · ${x.adep} → ${x.ades}`),
+          h("span", {class: "muted", style: "font-size:12.5px"}, `voa ${wdText(x.weekdays)} · visto ${x.observed}× no ADS-B${x.nights ? ` · pernoitou ${x.nights}×` : ""}`)),
+        x.candidates.length ? h("div", {class: "tbl"}, h("table", {}, h("thead", {}, h("tr", {}, ["Continuação", "Trecho", "Dias de partida do " + x.ident, "Solo", "ADS-B", "Pista", "Confiança"].map(t => h("th", {}, t)))),
+          h("tbody", {}, x.candidates.map(c => h("tr", {}, h("td", {}, h("b", {}, c.ident)), h("td", {class: "t"}, `${c.adep}→${c.ades}${c.kind === "volta" ? " (volta)" : ""}`),
+            h("td", {}, wdText(c.weekdays)), h("td", {class: "n"}, `${c.gap_min} min`), h("td", {class: "n"}, `${c.adsb}× · ${Math.round(c.rate * 100)}%`),
+            h("td", {}, c.pair ? `par ${c.delta > 0 ? "+" : "−"}1${c.inverted ? " · invertido" : ""}` : "—"), h("td", {}, chip(c.confidence, CONF_CLS[c.confidence])))))))
+          : h("p", {class: "muted"}, "Nenhuma continuação no RPL nem no ADS-B: o avião costuma pernoitar ou trocar de voo depois de mais de 4 h."),
+        x.rules.length ? h("p", {}, chip("sua regra", "hold"), " ", x.rules.map(r => `${r.to_ident.startsWith("@") ? "qualquer voo para " + r.to_ident.slice(1) : r.to_ident} (${wdText(r.weekdays)})`).join("; ")) : null,
+        h("button", {class: "btn ghost sm", onclick: () => { f.from.value = x.ident; f.to.focus(); f.to.scrollIntoView({behavior: "smooth", block: "center"}); }}, "Cadastrar continuação deste voo")))
+        : h("p", {class: "muted", style: "margin-top:12px"}, "Nenhum voo encontrado na semana publicada do RPL."),
+        h("p", {class: "fine", style: "margin-top:12px"}, `Semana de referência do RPL: ${dmy(r.reference_week[0])} a ${dmy(r.reference_week[1])} · ${r.adsb_days} dias de ADS-B · ${r.source}. ADS-B “2× · 27%”: visto 2 vezes, em 27% das vezes em que os dois voos existiam no período. Par ±1: numeração de ida e volta; invertido = o sentido menos comum na companhia.`));
+    } catch (e) { put(res, note("stop", "alerta", e.message)); }
+  };
+  q.addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+  put(main, h("div", {class: "head"}, h("div", {}, h("h1", {}, "Continuações do avião"),
+      h("div", {class: "sub"}, "Beta: depois de cada voo, para onde o avião (e a tripulação) costuma seguir. RPL do CGNA + rodízios vistos no ADS-B + o que você cadastrar."))),
+    h("div", {class: "panel"}, h("div", {class: "row"}, field("Buscar", q), h("div", {style: "align-self:end;margin-bottom:13px"}, h("button", {class: "btn", onclick: search}, "Buscar")))),
+    res, h("div", {style: "margin-top:18px"}, rulesBox));
+  loadRules();
+  if (cont.q) search();
+});
+
 /* ───────────────────────── estatísticas ───────────────────────── */
 const stats = {src: "roster", period: "mes"};
 view("estatisticas", async main => {
@@ -288,7 +370,7 @@ const pal = {fleet: null};
 function paletteItems(q) {
   const items = NAV.filter(([k]) => k !== "salarios" || payOn()).map(([k, l]) => ({label: l, hint: "tela", go: `#/${k}`}));
   items.push({label: "Gerar escala", hint: "ação", go: "#/gerar"}, {label: "Escala de hoje", hint: "ação", go: `#/escala/${today()}`},
-             {label: "Trocar de companhia", hint: "ação", go: "#/modo"},
+             {label: "Trocar de companhia", hint: "ação", go: "#/modo"}, {label: "Continuações do avião (beta)", hint: "tela", go: "#/continuacoes"},
              {label: "Escala em texto / agenda", hint: "ação", fn: () => rosterTextDialog(roster.date, roster.bounds || {})});
   const m = q.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/) || q.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) {
@@ -664,7 +746,7 @@ function dayView(d, fleet) {
         legs.filter(l => l.can_book || l.flight_state === "RESERVADO").map(l => h("button", {class: "btn ghost sm", onclick: () => manualDialog(legTarget(l), fleet)},
           icon("ok", 15), `Já fiz o ${l.flight_number || l.adep + "→" + l.ades}`))) : null,
       swapRow(d, legs), overnightRow(d, legs)),
-    swapDayPanel(d),
+    swapDayPanel(d), contDayPanel(d),
     d.reserve ? h("div", {class: "panel"}, h("h2", {}, "Reserva"), h("p", {class: "muted"}, d.reserve.note || "Sem observações do AeroScale."),
       h("dl", {class: "kv"}, h("dt", {}, "Período"), h("dd", {}, `${dmy(d.reserve.from)} → ${dmy(d.reserve.to)} (${d.reserve.days} dias)`),
         h("dt", {}, "Local"), h("dd", {}, `${d.reserve.at.icao}${d.reserve.location_kind ? " · " + d.reserve.location_kind : ""}`),
@@ -810,15 +892,17 @@ function overnightRow(d, legs) {
   return h("div", {class: "swap-row pernoite-row"}, h("span", {class: "muted", style: "font-size:13px"}, "Discord:"),
     fl.map(l => {
       const st = posts[String(l.id)], cb = h("input", {type: "checkbox", checked: !!st && st.state === "ENVIADO"});
-      const auto = d.overnight && l.id === lastId;
+      const det = d.overnight && (d.overnight.kind === "marcado" ? d.overnight.detected : d.overnight);
+      const auto = det && l.id === lastId;
       cb.addEventListener("change", async () => {
         cb.disabled = true;
         const r = await act(() => post(`/api/pernoite/${l.id}/${cb.checked ? "marcar" : "desmarcar"}`),
           cb.checked ? "Pernoite enviado para o Discord" : "Pernoite desmarcado");
         if (!r) cb.checked = !cb.checked;
         else if (r.note) toast(r.note, true);
-        else if (cb.checked && !r.detected) toast("Enviado. Pela escala, esse voo não termina em pernoite: confira se é o voo certo.");
+        else if (cb.checked && !r.detected) toast("Enviado. Pela escala, esse voo não termina em pernoite: o pernoite do dia passa a ser no destino dele.");
         cb.disabled = false;
+        if (r) render();                                   // o pernoite, o hotel e o resumo do dia seguem o voo marcado
       });
       return h("label", {class: "ck pernoite-ck" + (auto ? " auto" : ""), title: st && st.state === "ERRO" ? `Último envio falhou: ${st.error}` : (auto ? "Pela escala, este voo termina em pernoite" : "")},
         cb, h("b", {}, "ESSE VOO É PERNOITE"), ` ${l.flight_number || l.adep + "→" + l.ades}${auto ? " · pernoite na escala" : ""}${st && st.state === "ERRO" ? " · falhou" : ""}`);
@@ -2303,6 +2387,7 @@ view("gerar", async main => {
     madr: ck("avoid_madrugada", false), pref: sel("time_pref", [["", "Sem preferência"], ["manha", "Prefiro manhã"], ["tarde", "Prefiro tarde"]], ""),
     seed: h("input", {type: "number", placeholder: "sorteada"}), off: h("input", {type: "date"}), frompos: h("input", {type: "checkbox"}),
     fromday: h("input", {type: "date"}), replace: ck("replace_from_day", true), cargo: ck("include_cargo", false),
+    follow: h("input", {type: "range", min: 0, max: 100, step: 5, value: pv("follow_strength", 70)}),
     ntDate: h("input", {type: "date"}), ntAp: h("input", {placeholder: "ICAO ou IATA: FOR, SBRF…", style: "text-transform:uppercase"})};
   const nights = [];
   const nightBox = h("div", {class: "tools"});
@@ -2323,7 +2408,16 @@ view("gerar", async main => {
     e.addEventListener("change", () => { if (e.value === "") delete wm[String(k)]; else wm[String(k)] = +e.value; cell.classList.toggle("off", e.value === "0"); });
     return cell;
   }));
-  const chOut = h("div", {class: "fine"}), intlOut = h("div", {class: "fine"});
+  const chOut = h("div", {class: "fine"}), intlOut = h("div", {class: "fine"}), folOut = h("div", {class: "fine"});
+  const syncFol = () => {
+    const v = +i.follow.value;
+    const which = v === 0 ? "Desligado: o avião não é seguido (nem as suas regras)."
+      : `Força ${v}: as suas continuações sempre; as identificadas no RPL e no ADS-B entram sozinhas — `
+        + [["alta", 1, 1], ["média", 30, 0.85], ["baixa", 80, 0.6]].filter(([, m]) => v >= m).map(([c, , w]) => `${c} em ~${Math.round(v * w)}% das vezes`).join(", ")
+        + (v < 30 ? " (média a partir de 30)" : v < 80 ? " (baixa a partir de 80)" : "") + ".";
+    put(folOut, which);
+  };
+  i.follow.addEventListener("input", syncFol);
   const syncCh = moved => {
     let a = +i.l2.value, b = +i.l3.value;
     if (a + b > 100) { if (moved === "l3") { a = 100 - b; i.l2.value = a; } else { b = 100 - a; i.l3.value = b; } }
@@ -2349,7 +2443,7 @@ view("gerar", async main => {
   const syncProf = () => put(profHint, i.realism.checked ? `${o.profile_text || ""} O gerador mira nas horas de voo e na quantidade de pernas das escalas reais, em vez de encher o dia de pernas curtas.`
     : "Desligado: o gerador enche o dia com o máximo de pernas permitido.");
   i.realism.addEventListener("change", syncProf);
-  syncCh(); syncIntl(); syncTurn(); syncProf();
+  syncCh(); syncIntl(); syncTurn(); syncProf(); syncFol();
   const fromPosLabel = h("span", {}, "Começar de onde o avião está");
   const posBox = h("div", {class: "panel"}, h("h2", {}, "Mudar de base / recomeçar daqui"), skeleton("l"));
   const loadPos = async () => {
@@ -2452,6 +2546,7 @@ view("gerar", async main => {
       overnights: nights.map(x => ({date: x.date, airport: x.airport})), days_off_mode: i.offmode.value};
     if (b.days_off_mode === "none") b.requested_off = [];
     if (car.code === "GLO") b.include_cargo = i.cargo.checked;
+    b.follow_strength = +i.follow.value;
     if (["mensal", "semestral", "anual"].includes(b.kind)) b.month = i.month.value; else { b.start_date = i.start.value; if (b.kind === "avulsa") b.end_date = i.end.value || i.start.value; }
     if (i.frompos.checked) b.from_position = true;
     if (monthly() && i.fromday.value) b.start_day = i.fromday.value;
@@ -2549,6 +2644,8 @@ view("gerar", async main => {
           h("label", {class: "ck"}, i.intl, "Incluir voos internacionais reais observados no ADS-B (os RPL do CGNA só têm voos domésticos)"), intlBox,
           h("label", {class: "ck"}, i.model, "Priorizar sequências prováveis (modelo de rodízio calibrado com rodízios reais)"),
           h("label", {class: "ck"}, i.posn, "Permitir pernas de posicionamento sugeridas quando ficar sem voos (sem número de voo, marcadas como sugestão)"),
+          h("div", {class: "row"}, field("Força das continuações do avião (beta)", i.follow), h("div", {style: "align-self:end;margin-bottom:13px"},
+            h("a", {href: "#/continuacoes", class: "btn ghost sm"}, "Ver e cadastrar"))), folOut,
           car.code === "GLO" ? h("label", {class: "ck"}, i.cargo, "Incluir voos de carga (GOL 9xxx, normalmente GOLLOG). Desligado, eles ficam fora da escala e das trocas") : null,
           h("div", {class: "row"}, field("Chance de anormalidade: repetição de trecho (% dos dias)", i.anom))),
         h("div", {class: "panel"}, step(5, "Regras de tripulação"), h("div", {class: "hr"}),
@@ -3393,7 +3490,12 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.1": [
+const NEWS = {"3.0.2b4": [
+  ["Continuações automáticas na geração", "O gerador agora segue sozinho para onde o avião costuma ir depois de cada voo (RPL + ADS-B), sem você cadastrar nada. Ex.: TAM3376 → Petrolina nos dias em que isso acontece."],
+  ["Força das continuações", "Slider em Gerar escala: 0 desliga; quanto mais alto, mais vezes a continuação é obrigatória e mais incertas as que entram (alta a partir de 1, média a partir de 30, baixa a partir de 80). As que você cadastra valem sempre. O diagnóstico da escala diz quantas foram seguidas."],
+  ["Pernoite marcado manda no dia", "Marcou “ESSE VOO É PERNOITE”? O pernoite do dia (resumo, hotel, carro e calendário do mês) passa a ser no destino desse voo, na hora."],
+  ["Bogotá e aeroportos de fora", "Códigos IATA de fora do Brasil (BOG) são reconhecidos no pernoite e nas trocas. Sem voo da companhia para lá nos dados, a escala avisa em vez de inventar."]],
+  "3.0.1": [
   ["Cabine noturna", "Visual novo: base azul-noite de painel de voo, as cores de aviônica com o significado da cabine (ciano = dado vivo, verde = ok, âmbar = atenção, vermelho = alerta) e a faixa de instrumentos no topo de toda tela, com hora UTC e local, a próxima apresentação em contagem regressiva e o próximo voo."],
   ["Estatísticas", "Tela nova: aeroportos mais usados, rotas, onde você mais pernoita, partidas por hora, etapa mais longa e dia mais cheio. Da escala ou do diário, do mês ou de tudo."],
   ["Aviso de pernoite para todos", "A caixa “ESSE VOO É PERNOITE” e o envio para o Discord, que eram só do cmdt079, agora valem para qualquer usuário."],

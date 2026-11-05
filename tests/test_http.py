@@ -563,3 +563,13 @@ def test_statistics_over_http(cl):
     s = cl.get("/api/estatisticas/envio").json()
     assert s["enabled"] is True and len(s["install"]) == 12
     assert cl.put("/api/estatisticas/envio", headers=H, json={"enabled": False}).json()["enabled"] is False
+
+
+def test_continuations_over_http(cl):
+    setup_user(cl)
+    r = cl.post("/api/continuacoes/regras", headers=H, json={"from": "1554", "to": "PNZ", "weekdays": [2, 4], "note": "o piloto disse"}).json()
+    assert r["to_ident"] == "@SBPL"
+    assert cl.get("/api/continuacoes/regras").json()[0]["from_ident"] == "GLO1554"
+    assert cl.post("/api/continuacoes/regras", headers=H, json={"from": "1554", "to": "1554"}).status_code == 400
+    assert cl.delete(f"/api/continuacoes/regras/{r['id']}", headers=H).json()["ok"]
+    assert cl.get("/api/continuacoes/dia/2026-11-02").status_code == 200

@@ -194,7 +194,9 @@ ALLOWED = {"kind", "month", "start_date", "end_date", "base", "icao_type", "mode
            # LineOps: pernoite pedido (o motor termina o dia no aeroporto pedido, com must_end do próprio AeroScale)
            "overnights", "include_cargo",
            # LineOps: folgas automáticas (regras), nenhuma folga, ou só as escolhidas a dedo
-           "days_off_mode"}
+           "days_off_mode",
+           # LineOps 3.0.2 (beta): seguir continuações (regras / regras + identificadas / não)
+           "follow_mode", "follow_strength"}
 DAYS_OFF_MODES = ("auto", "none", "manual")
 
 
@@ -224,6 +226,28 @@ def clean_params(airline: str, raw: dict) -> dict:
     return p
 
 
+def _follow_note(db, sid: int, p: dict):
+    """Diz no diagnóstico quantas vezes a escala seguiu a continuação do avião."""
+    from . import continuacao
+    legs = [dict(r) for r in db.execute("SELECT flight_number, adep, ades, dep_utc FROM schedule_legs WHERE schedule_id=? ORDER BY dep_utc", (sid,))]
+    from .planner_ext import follow_get
+    fol = follow_get(p["follow"])
+    n = continuacao.summarize(legs, fol)
+    fs = p.get("follow_strength")
+    note = {"level": "info", "code": "continuacoes",
+            "message": f"Continuações do avião (força {fs}): {n['known']} voo(s) da escala têm continuação conhecida; em "
+                       f"{n['regra'] + n['auto']} o voo seguinte foi ela ({n['regra']} pelas suas regras, {n['auto']} pelas "
+                       "identificadas no RPL e no ADS-B). Nos outros, o seu dia acabou ali (fim da jornada, folga ou fim do "
+                       "período: o avião segue com outra tripulação), a continuação não existia naquele dia, ou a força sorteou deixar livre."}
+    dg = json.loads(db.execute("SELECT diagnostics FROM schedules WHERE id=?", (sid,)).fetchone()[0] or "[]")
+    db.execute("UPDATE schedules SET diagnostics=? WHERE id=?", (json.dumps(dg[:1] + [note] + dg[1:], ensure_ascii=False), sid))
+
+
+def continuacao_default() -> int:
+    from .continuacao import DEFAULT_STRENGTH
+    return DEFAULT_STRENGTH
+
+
 def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None, share_stats: bool = False) -> dict:
     """Começa a geração em segundo plano. Devolve o estado da tarefa (a tela acompanha o progresso)."""
     from . import careers
@@ -245,6 +269,30 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None,
             cut_day, cut_until, start_pos = _from_day(p, rp, str(start_day)[:10], career_path, replace, from_pos)
         elif start_pos:
             _clip_to_position(p, rp, start_pos)
+        fm = p.pop("follow_mode", None)                   # formato da 3.0.2 beta 1 (regras/beta/off)
+        fs = p.pop("follow_strength", None)
+        if fm is not None and fm not in ("regras", "beta", "off"):
+            raise FGVError("Continuações: regras, beta ou off.", code="campo_invalido")
+        auto = fm != "regras"
+        if fs is None or fs == "":
+            fs = {"off": 0, "regras": 100, "beta": continuacao_default()}.get(fm, continuacao_default())
+        try:
+            fs = int(fs)
+        except (TypeError, ValueError):
+            raise FGVError("Força das continuações: um número de 0 a 100.", code="campo_invalido") from None
+        if not 0 <= fs <= 100:
+            raise FGVError("Força das continuações: de 0 a 100.", code="campo_invalido")
+        from . import continuacao
+        from .db import connect as lconnect
+        cc1 = lconnect(career_path)
+        try:
+            fol = continuacao.follow_map(cc1, data_dir, airline, fs, auto=auto)
+        finally:
+            cc1.close()
+        if fol:
+            from .planner_ext import follow_stash
+            p["follow"] = follow_stash(fol)
+        p["follow_strength"] = fs
         if p.get("overnights"):
             from . import pernoite
             from .db import connect as lconnect
@@ -269,7 +317,13 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None,
         gone = _supersede(db, airline, rp2["start_date"], rp2["end_date"])
         if gone:
             log.info("motor: %d escala(s) antiga(s) de %s no período substituída(s)", gone, airline)
-        sid = _generate_with_nights(db, p, start_pos, progress)
+        try:
+            sid = _generate_with_nights(db, p, start_pos, progress)
+            if p.get("follow"):
+                _follow_note(db, sid, p)
+        finally:
+            from .planner_ext import follow_drop
+            follow_drop(p.get("follow"))
         mode = p.get("days_off_mode") or "auto"
         if mode != "auto":
             offs = p.get("requested_off") or []

@@ -50,6 +50,7 @@ def month(conn, ym: str, now: str | None = None) -> dict:
     for r in rows(conn.execute("SELECT leg_ids, state FROM swap_request WHERE state='PENDENTE'")):
         for i in jloads(r["leg_ids"], []):
             swaps[i] = True
+    marked = {r[0] for r in conn.execute("SELECT leg_uid FROM overnight_post WHERE state='ENVIADO'")}   # "ESSE VOO É PERNOITE"
     p_cache = {}
     days, tot = [], {"flight_days": 0, "legs": 0, "block_min": 0, "off": 0, "reserve": 0, "standby": 0, "nights_out": 0}
     airports = set()
@@ -80,6 +81,9 @@ def month(conn, ym: str, now: str | None = None) -> dict:
             nxt = one(conn.execute("SELECT adep, local_date FROM roster_leg WHERE removed_batch IS NULL AND activity<>'SOBREAVISO' "
                                    "AND dep_utc>? ORDER BY dep_utc LIMIT 1", (last["arr_utc"],)))
         night = last["ades"] if last and base and last["ades"] != base and nxt and nxt["adep"] == last["ades"] else None
+        mk = [l for l in fl if l.get("uid") in marked]
+        if mk:                                                   # o voo que você marcou como pernoite manda no dia
+            night = mk[-1]["ades"]
         route = []
         for l in fl:
             if not route:
