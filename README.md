@@ -1,7 +1,7 @@
 # LineOps
 
 Centro de operações **pessoal** e **autohospedado** de simulação aérea, com **um modo por companhia** (projeto que nasceu
-como GolOps, antes FlyGolV). Projeto independente de simulação, **sem afiliação, patrocínio ou endosso de nenhuma companhia
+como GolOps,). Projeto independente de simulação, **sem afiliação, patrocínio ou endosso de nenhuma companhia
 aérea**. Todo conteúdo é simulado e não é documentação operacional.
 
 ```
