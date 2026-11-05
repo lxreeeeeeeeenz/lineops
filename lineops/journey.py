@@ -170,6 +170,11 @@ def day(conn, date: str) -> dict:
         nxt = _next_leg(conn, date + "T00:00:00Z")
         if nxt:
             out["next_duty"] = _duty_ref(conn, p, nxt)
+    ina = one(conn.execute("SELECT * FROM roster_day WHERE kind='inativo' AND date=? AND schedule_id=? ORDER BY id DESC LIMIT 1",
+                           (date, sched["id"]))) if sched and out["kind"] == "LIVRE" else None
+    if ina:
+        out["kind"] = "INATIVO"
+        out["inactive"] = {"at": place(conn, ina["location"]), "note": ina["note"]}
     semtz = sorted({i for l in legs for i in (l["adep"], l["ades"]) if not rules.airport_tz(conn, i)})
     out["tz_unknown"] = semtz
     diags = jloads(sched["diagnostics"], []) if sched else []

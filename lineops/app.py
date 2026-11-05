@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, continuacao, estatisticas, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
+from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, continuacao, estatisticas, exportar, fleet, frota_ref, inativo, pernoite, senha, legacy, flights, journey,
                careers, carreira, enroute, equipe, externos, feed, ivao, motor, notify, stay, tripulacao, loadsheet as ls_mod, logs, validity, manual, network, ofp as ofp_mod, payroll, pireps, rules, security, troca, posicao, visao)
 from .db import audit, connect, migrate, now_iso, one, pending, rows, tx
 from .errors import FGVError, NotFound
@@ -520,6 +520,18 @@ def create_app(data_dir: str | Path) -> FastAPI:
     @app.get("/api/escala/apagar-tudo")
     def wipe_preview(u=Depends(auth), conn=Depends(get_db)):
         return posicao.wipe_preview(conn)
+
+    @app.get("/api/escala/inativos")
+    def inactive_days(u=Depends(auth), conn=Depends(get_db)):
+        return {"items": inativo.list_days(conn)}
+
+    @app.post("/api/escala/inativos/tirar")
+    def inactive_remove(b: dict = Body(default={}), u=Depends(session_only), conn=Depends(get_db)):
+        b = b or {}
+        dates = b.get("dates")
+        if dates is not None and (not isinstance(dates, list) or not all(isinstance(x, str) for x in dates)):
+            raise FGVError("dates: lista de datas.", code="campo_invalido")
+        return inativo.remove(conn, data_dir, dates, fill=bool(b.get("fill", True)))
 
     @app.post("/api/escala/apagar-tudo")
     def wipe_all(b: dict = Body(default={}), u=Depends(session_only), conn=Depends(get_db)):

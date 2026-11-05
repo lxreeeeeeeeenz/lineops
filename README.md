@@ -10,6 +10,14 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.2 beta 5
+
+* **Tirar os dias INATIVOS.** O AeroScale coloca dias INATIVOS fora da base (descanso longo, sem voo). Agora dá para
+  tirar: em Gerar escala › Dias INATIVOS (todos de uma vez) ou no próprio dia, na Escala. Cada dia é preenchido com
+  voos reais do RPL (ida e volta a partir do aeroporto onde você está, dentro das regras de jornada e repouso); se
+  nenhum par de voos reais cabe, o dia fica livre no mesmo aeroporto. Nada é inventado e só os dias com INATIVO mudam.
+  Para não gerar mais nenhum, desmarque "Dia INATIVO fora da base" no passo 2 do gerador.
+
 ## Novidades da 3.0.2 beta 4
 
 * **Continuações do avião na geração, sozinhas.** Depois de cada voo, o gerador segue para onde o avião costuma ir
@@ -404,7 +412,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.2b4.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.2b5.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

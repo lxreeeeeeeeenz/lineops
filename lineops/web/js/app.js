@@ -648,7 +648,7 @@ view("escala", async (main, arg) => {
 });
 
 /* ───────────────────────── mês, mapa e limites ───────────────────────── */
-const KIND_LABEL = {VOO: "voo", FOLGA: "folga", RESERVA: "reserva", SOBREAVISO: "sobreaviso", LIVRE: "livre"};
+const KIND_LABEL = {VOO: "voo", FOLGA: "folga", RESERVA: "reserva", SOBREAVISO: "sobreaviso", LIVRE: "livre", INATIVO: "inativo"};
 function monthView(mo, mp, li) {
   const t = mo.totals;
   const figs = h("div", {class: "figs"}, [
@@ -740,7 +740,10 @@ function dayView(d, fleet) {
     (d.diagnostics || []).map(x => note(x.level === "warning" ? "hold" : "", x.level === "warning" ? "alerta" : "info", h("b", {}, "AeroScale: "), x.message)),
     h("div", {class: "panel"}, h("div", {class: "panel-head"}, h("h2", {}, cap(d.label)), h("div", {class: "tools"}, chips)),
       legs.length ? journeyRail(d) : h("div", {class: "empty"}, icon("vazio", 26), h("div", {},
-        d.kind === "FOLGA" ? "Folga programada." : d.kind === "RESERVA" ? "Dia de reserva, sem voos atribuídos." : "Nenhuma perna neste dia.")),
+        d.kind === "FOLGA" ? "Folga programada." : d.kind === "RESERVA" ? "Dia de reserva, sem voos atribuídos."
+        : d.kind === "INATIVO" ? `Dia INATIVO em ${d.inactive.at.icao}: sem voo, fora da base (descanso longo do AeroScale; não conta como folga).` : "Nenhuma perna neste dia.")),
+      d.kind === "INATIVO" ? h("div", {style: "margin-top:12px"}, h("button", {class: "btn ghost sm", onclick: () => tirarInativos([d.date])},
+        icon("troca", 15), "Tirar o INATIVO (preencher com voos reais)")) : null,
       legs.filter(l => l.can_book || l.flight_state === "RESERVADO").length ? h("div", {style: "margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"},
         legs.filter(l => l.can_book).map(l => h("button", {class: "btn ghost sm", onclick: () => bookDialog(l, fleet)}, icon("mais", 15), `Reservar ${l.flight_number || l.adep + "→" + l.ades}`)),
         legs.filter(l => l.can_book || l.flight_state === "RESERVADO").map(l => h("button", {class: "btn ghost sm", onclick: () => manualDialog(legTarget(l), fleet)},
@@ -882,6 +885,16 @@ function swapRow(d, legs) {
   if (!can.length) return null;
   return h("div", {class: "swap-row"}, h("span", {class: "muted", style: "font-size:13px"}, "Troca de escala:"),
     can.map(l => h("button", {class: "btn ghost sm", onclick: () => swapDialog(l)}, icon("troca", 15), `Pedir troca do ${l.flight_number || l.adep + "→" + l.ades}`)));
+}
+/* dias INATIVOS: tirar (preencher com voos reais ou deixar livre) */
+async function tirarInativos(dates, after) {
+  const r = await act(() => post("/api/escala/inativos/tirar", dates ? {dates} : {}), null);
+  if (!r) return;
+  const f = r.filled.map(x => `${dm(x.date)} ${x.location}: ${x.flights.join(", ")}`), l = r.freed.map(x => `${dm(x.date)} ${x.location}`);
+  dialog("INATIVOS tirados", r.days ? "" : "Nenhum dia INATIVO para tirar.", h("div", {},
+    f.length ? h("p", {}, h("b", {}, "Preenchidos com voos reais: "), f.join(" · ")) : null,
+    l.length ? h("p", {}, h("b", {}, "Ficaram livres (nenhum par de voos reais coube nas regras de jornada): "), l.join(" · ")) : null), [closeBtn]);
+  if (after) after(); else render();
 }
 /* aviso de pernoite no Discord (só para o usuário cmdt079) */
 function overnightRow(d, legs) {
@@ -2590,6 +2603,11 @@ view("gerar", async main => {
       "Padrão salvo: vale para as próximas escalas");
     return r;
   };
+  const inaBox = h("div", {class: "panel"}, h("h2", {}, "Dias INATIVOS"), skeleton("s"));
+  get("/api/escala/inativos").then(r => put(inaBox, h("h2", {}, "Dias INATIVOS"),
+    h("p", {class: "fine"}, "Dias sem voo fora da base que o AeroScale coloca como descanso longo. Tirar = preencher o dia com voos reais do RPL (ida e volta de onde você está, dentro das regras); se nenhum par cabe, o dia fica livre. Só esses dias mudam. Para não gerar mais nenhum, desmarque “Dia INATIVO fora da base” no passo 2."),
+    r.items.length ? h("div", {class: "tools"}, r.items.map(x => h("span", {class: "chip"}, `${dm(x.date)} · ${x.iata || x.location}`))) : h("p", {class: "muted"}, "Nenhum na escala atual."),
+    r.items.length ? h("div", {class: "tools", style: "margin-top:10px"}, h("button", {class: "btn ghost sm", onclick: () => tirarInativos(null, () => render())}, "Tirar todos os INATIVOS")) : null)).catch(() => put(inaBox, h("h2", {}, "Dias INATIVOS"), h("p", {class: "muted"}, "Não deu para listar.")));
   const wipeBox = h("div", {class: "panel danger-zone"}, h("h2", {}, "Apagar todas as escalas"),
     h("p", {class: "muted"}, "Tira todas as pernas, folgas, reservas e sobreavisos desta carreira, para começar do zero. O diário de bordo, os voos já feitos, os salários e as mensagens ficam. Antes, sai um backup completo."),
     h("button", {class: "btn stop sm", onclick: async () => {
@@ -2687,7 +2705,7 @@ view("gerar", async main => {
           h("p", {class: "fine"}, "Cole a escala como circula entre tripulantes, um dia por linha. Cada voo é procurado no RPL pelo número, trecho e data."),
           real.txt, h("div", {class: "row", style: "margin-top:8px"}, field("Mês da primeira linha", real.month), field("Base", real.base)),
           h("button", {class: "btn sm", onclick: async () => { const r = await act(() => post("/api/motor/escala-real", {text: real.txt.value, month: real.month.value, base: real.base.value || null}), "Escala real importada"); if (r) location.hash = "#/escala"; }}, "Importar")),
-        wipeBox)));
+        inaBox, wipeBox)));
   loadPos();
   if (gen.job) get(`/api/motor/tarefas/${gen.job}`).then(j => { if (j.state === "running") { showJob(j); clearInterval(gen.timer);
     gen.timer = setInterval(async () => { if (!location.hash.startsWith("#/gerar")) return clearInterval(gen.timer); showJob(await get(`/api/motor/tarefas/${gen.job}`)); }, 500); } }).catch(() => {});
@@ -3490,7 +3508,8 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.2b4": [
+const NEWS = {"3.0.2b5": [
+  ["Tirar os dias INATIVOS", "Em Gerar escala › Dias INATIVOS (todos de uma vez) ou no próprio dia na Escala. Cada dia é preenchido com voos reais do RPL (ida e volta de onde você está, dentro das regras de jornada); se nenhum par cabe, o dia fica livre. Só os dias com INATIVO mudam."],
   ["Continuações automáticas na geração", "O gerador agora segue sozinho para onde o avião costuma ir depois de cada voo (RPL + ADS-B), sem você cadastrar nada. Ex.: TAM3376 → Petrolina nos dias em que isso acontece."],
   ["Força das continuações", "Slider em Gerar escala: 0 desliga; quanto mais alto, mais vezes a continuação é obrigatória e mais incertas as que entram (alta a partir de 1, média a partir de 30, baixa a partir de 80). As que você cadastra valem sempre. O diagnóstico da escala diz quantas foram seguidas."],
   ["Pernoite marcado manda no dia", "Marcou “ESSE VOO É PERNOITE”? O pernoite do dia (resumo, hotel, carro e calendário do mês) passa a ser no destino desse voo, na hora."],
