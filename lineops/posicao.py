@@ -49,10 +49,8 @@ def memorized(conn) -> dict | None:
 def _legs_alive(conn, with_standby: bool = False):
     """Pernas vivas. Para saber onde o avião está, só voos; para apagar, também as do sobreaviso acionado
     (with_standby): senão ficavam voos soltos depois do corte."""
-    return rows(conn.execute("""SELECT l.*, f.id AS flight_id, f.state AS flight_state FROM roster_leg l
-                                LEFT JOIN flight f ON f.leg_id=l.id AND f.state<>'CANCELADO'
-                                WHERE l.removed_batch IS NULL""" + ("" if with_standby else " AND l.activity<>'SOBREAVISO'")
-                             + " ORDER BY l.dep_utc, l.seq"))
+    from . import escala
+    return escala.legs(conn, flights_only=not with_standby)
 
 
 def current(conn, now: str | None = None) -> dict:

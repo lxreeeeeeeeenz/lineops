@@ -25,8 +25,9 @@ def _place(conn, icao):
     if not icao:
         return None
     a = rules.airport(conn, icao) or {}
+    from .conquistas import country_of            # aeroporto estrangeiro traz o país no campo da UF ("AR" para Ezeiza)
     return {"icao": icao, "iata": a.get("iata"), "city": a.get("city") or a.get("name"), "lat": a.get("lat"), "lon": a.get("lon"),
-            "country": a.get("country") or ("BR" if a.get("uf") else None)}
+            "country": country_of(a)}
 
 
 def _month_bounds(ym: str) -> tuple[date, date]:
@@ -39,10 +40,8 @@ def month(conn, ym: str, now: str | None = None) -> dict:
     d0, d1 = _month_bounds(ym)
     now = now or now_iso()
     today = journey.local_today(conn, now)
-    legs = rows(conn.execute("""SELECT l.*, f.id AS flight_id, f.state AS flight_state FROM roster_leg l
-                                LEFT JOIN flight f ON f.leg_id=l.id AND f.state<>'CANCELADO'
-                                WHERE l.removed_batch IS NULL AND COALESCE(l.local_date, substr(l.dep_utc,1,10)) BETWEEN ? AND ?
-                                ORDER BY l.dep_utc""", (d0.isoformat(), d1.isoformat())))
+    from . import escala
+    legs = escala.legs(conn, d0.isoformat(), d1.isoformat())
     by = {}
     for l in legs:
         by.setdefault(l["local_date"] or l["dep_utc"][:10], []).append(l)

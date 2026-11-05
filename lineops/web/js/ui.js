@@ -64,6 +64,8 @@ const PATHS = {
   futuro: "M12 3a9 9 0 100 18 9 9 0 000-18zM8 12h8",
   seta: "M9 5l7 7-7 7",
   troca: "M4 8h13l-3-3 M17 8l-3 3 M20 16H7l3 3 M7 16l3-3",
+  busca: "M11 4a7 7 0 100 14 7 7 0 000-14z M20 20l-4-4",
+  trofeu: "M8 4h8v5a4 4 0 01-8 0V4z M8 6H5a3 3 0 003 3 M16 6h3a3 3 0 01-3 3 M12 13v4 M9 20h6 M10 17h4v3h-4z",
   mais: "M12 5v14M5 12h14",
   importar: "M12 3v11M8 10l4 4 4-4M4 19h16",
   baixar: "M12 3v11M8 10l4 4 4-4M4 19h16",

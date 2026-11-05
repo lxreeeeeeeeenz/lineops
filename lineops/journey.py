@@ -263,10 +263,8 @@ def crew_report(conn, start: str | None = None, end: str | None = None) -> dict:
         return {"available": False, "reason": "Nenhuma escala importada."}
     start = start or sched["start_date"]
     end = end or sched["end_date"]
-    legs = [dict(r) for r in conn.execute(
-        """SELECT uid, flight_number, adep, ades, dep_utc, arr_utc, eet_min, type_icao, activity, local_date, data_origin
-           FROM roster_leg WHERE removed_batch IS NULL AND activity<>'SOBREAVISO'
-             AND COALESCE(local_date, substr(dep_utc,1,10)) BETWEEN ? AND ? ORDER BY dep_utc""", (start, end))]
+    from . import escala
+    legs = escala.crew_legs(conn, start, end)
     if not legs:
         return {"available": False, "reason": "Sem pernas no período."}
     base = p.get("base_resolved") or p.get("base")

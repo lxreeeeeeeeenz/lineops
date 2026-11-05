@@ -162,6 +162,7 @@ function shell(cur) {
   railPulse(netEl);
   return h("div", {class: "rail"}, h("div", {class: "brand"}, logo, h("span", {}, "Line", h("b", {}, "Ops"))),
     h("a", {class: "c-switch", href: "#/modo", title: "Trocar de companhia"}, careerBadge({...car, has_logo: me.career_logo}, 24), h("span", {}, h("b", {}, `Modo ${car.name || ""}`), h("small", {}, "trocar"))),
+    h("button", {class: "pal-btn", type: "button", onclick: () => openPalette(), title: "Paleta de comandos"}, icon("busca", 15), h("span", {}, "Buscar"), h("kbd", {}, "Ctrl K")),
     list, netEl,
     h("div", {class: "who" + (me.avatar ? " has-avatar" : "")}, me.avatar ? h("img", {class: "avatar", src: me.avatar, alt: "", width: 36, height: 36}) : null,
       h("div", {}, h("b", {}, me.display_name), me.pilot_code, " · ", h("a", {href: "#", onclick: async e => {
@@ -189,6 +190,69 @@ async function render() {
 }
 let lastHash = "";
 addEventListener("hashchange", render);
+
+/* ───────────────────────── paleta de comandos (Ctrl+K) e atalhos ───────────────────────── */
+const pal = {fleet: null};
+function paletteItems(q) {
+  const items = NAV.filter(([k]) => k !== "salarios" || payOn()).map(([k, l]) => ({label: l, hint: "tela", go: `#/${k}`}));
+  items.push({label: "Gerar escala", hint: "ação", go: "#/gerar"}, {label: "Escala de hoje", hint: "ação", go: `#/escala/${today()}`},
+             {label: "Trocar de companhia", hint: "ação", go: "#/modo"},
+             {label: "Escala em texto / agenda", hint: "ação", fn: () => rosterTextDialog(roster.date, roster.bounds || {})});
+  const m = q.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/) || q.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    let d;
+    if (q.includes("-") && m[1].length === 4) d = `${m[1]}-${m[2]}-${m[3]}`;
+    else { const y = m[3] ? (m[3].length === 2 ? "20" + m[3] : m[3]) : today().slice(0, 4); d = `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`; }
+    if (!isNaN(Date.parse(d))) items.unshift({label: `Ir para o dia ${dmy(d)}`, hint: "escala", go: `#/escala/${d}`});
+  }
+  (pal.fleet || []).forEach(a => items.push({label: `${a.registration} · ${a.type_icao}${typeof cfgShort === "function" && cfgShort(a) ? " · " + cfgShort(a) : ""}`, hint: "frota", go: `#/frota/${a.id}`, quiet: true}));
+  const n = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const qq = n(q.trim());
+  return (qq ? items.filter(x => n(x.label).includes(qq) || n(x.hint).includes(qq)) : items.filter(x => !x.quiet)).slice(0, 12);
+}
+function openPalette() {
+  if (!me || document.getElementById("pal")) return;
+  if (!pal.fleet) get("/api/aircraft").then(l => { pal.fleet = l; paint(); }).catch(() => {});
+  const inp = h("input", {placeholder: "Tela, ação, dia (12/11) ou matrícula…", autocomplete: "off", spellcheck: false});
+  const list = h("div", {class: "pal-list", role: "listbox"});
+  let sel = 0, items = [];
+  const close = () => wrap.remove();
+  const run = it => { close(); if (!it) return; if (it.fn) it.fn(); else location.hash = it.go; };
+  const paint = () => {
+    items = paletteItems(inp.value); sel = Math.min(sel, Math.max(0, items.length - 1));
+    put(list, items.length ? items.map((it, k) => h("button", {class: "pal-item" + (k === sel ? " on" : ""), role: "option", onmousemove: () => { if (sel !== k) { sel = k; paint(); } },
+      onclick: () => run(it)}, h("span", {}, it.label), h("small", {}, it.hint))) : h("p", {class: "muted", style: "padding:10px 14px;margin:0"}, "Nada encontrado."));
+  };
+  inp.addEventListener("input", () => { sel = 0; paint(); });
+  inp.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { sel = Math.min(items.length - 1, sel + 1); paint(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { sel = Math.max(0, sel - 1); paint(); e.preventDefault(); }
+    else if (e.key === "Enter") { run(items[sel]); e.preventDefault(); }
+    else if (e.key === "Escape") close();
+  });
+  const wrap = h("div", {id: "pal", class: "pal-back", onclick: e => { if (e.target === wrap) close(); }},
+    h("div", {class: "pal"}, inp, list, h("div", {class: "pal-foot"}, "↑↓ escolher · Enter abrir · Esc fechar · ? atalhos")));
+  document.body.append(wrap); paint(); inp.focus();
+}
+function shortcutsHelp() {
+  dialog("Atalhos de teclado", null, h("dl", {class: "kv"},
+    [["Ctrl + K", "paleta: telas, ações, dia (12/11) e matrícula"], ["← →", "dia (ou semana, ou mês) anterior / seguinte, na Escala"], ["T", "hoje, na Escala"],
+     ["D · S · M", "modo Dia, Semana e Mês, na Escala"], ["G", "Gerar escala"], ["?", "esta ajuda"]].map(([k, v]) => [h("dt", {class: "mono"}, k), h("dd", {}, v)])), [closeBtn]);
+}
+addEventListener("keydown", e => {
+  if (!me) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); return; }
+  const t = e.target, typing = t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+  if (typing || e.ctrlKey || e.metaKey || e.altKey || document.getElementById("pal") || document.getElementById("dlg").open) return;
+  const onRoster = location.hash.startsWith("#/escala");
+  if (e.key === "?") { shortcutsHelp(); return; }
+  if (e.key === "g" || e.key === "G") { location.hash = "#/gerar"; return; }
+  if (!onRoster) return;
+  const k = e.key.toLowerCase();
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") { const b = document.querySelector(`.stepper button[aria-label="${e.key === "ArrowLeft" ? "Anterior" : "Próximo"}"]`); if (b) { b.click(); e.preventDefault(); } }
+  else if (k === "t") { roster.date = today(); location.hash = `#/escala/${today()}`; render(); }
+  else if (k === "d" || k === "s" || k === "m") { roster.mode = {d: "dia", s: "semana", m: "mes"}[k]; render(); }
+});
 
 /* ───────────────────────── entrada ───────────────────────── */
 /* senha esquecida: código no arquivo REDEFINIR-SENHA.txt da pasta de dados (só no PC da instalação) */
@@ -358,6 +422,8 @@ function rosterTextDialog(date, bounds) {
     h("div", {}, field("Período", per), custom, h("div", {class: "tools", style: "margin:4px 0 10px;flex-wrap:wrap"}, segS,
       h("label", {class: "ck", style: "margin:0"}, tm, "Incluir horários (hora local)")), out, info),
     [closeBtn,
+     {label: "Agenda (.ics)", cls: "ghost", keep: true, fn: () => { const [i0, f0] = range(); const l = h("a", {href: `/api/escala/agenda.ics?inicio=${i0}&fim=${f0}`, download: ""}); document.body.append(l); l.click(); l.remove();
+       toast("Abra o arquivo .ics no Google Agenda, Outlook ou no calendário do celular"); }},
      {label: "Baixar .txt", cls: "ghost", keep: true, fn: () => { const l = h("a", {href: `/api/escala/texto.txt?${q()}`, download: ""}); document.body.append(l); l.click(); l.remove(); }},
      {label: "Copiar", keep: true, fn: async () => {
        try { await navigator.clipboard.writeText(out.value); } catch (e) { out.select(); document.execCommand("copy"); }
@@ -2011,7 +2077,20 @@ view("carreira", async main => {
           h("p", {class: "fine"}, "Tripulação fictícia do LineOps.")))));
   const pp = h("div", {class: "panel"}, h("div", {class: "panel-head"}, h("h2", {}, "Passaporte")), skeleton("l", "l"));
   const sp = h("div", {class: "panel"}, h("div", {class: "panel-head"}, h("h2", {}, "Pedidos de troca de escala")), skeleton("l", "l"));
-  main.append(pp, sp);
+  const cq = h("div", {class: "panel"}, h("div", {class: "panel-head"}, h("h2", {}, "Conquistas")), skeleton("l"));
+  main.append(cq, pp, sp);
+  get("/api/conquistas").then(c => {
+    if (!cq.isConnected) return;
+    const fmtN = (v, u) => `${Number.isInteger(v) ? v : v.toLocaleString("pt-BR", {maximumFractionDigits: 1})}`;
+    const items = [...c.items].sort((a, b) => (b.done - a.done) || (b.pct - a.pct));
+    put(cq, h("div", {class: "panel-head"}, h("h2", {}, "Conquistas"), h("span", {class: "muted", style: "font-size:12.5px"}, `${c.done} de ${c.total}`)),
+      h("div", {class: "badges"}, items.map(b => h("div", {class: "badge" + (b.done ? " got" : ""), title: `Fonte: ${b.source}`},
+        h("span", {class: "ic"}, icon(b.done ? "trofeu" : "relogio", 18)),
+        h("div", {style: "min-width:0;flex:1"}, h("b", {}, b.title), h("small", {}, b.desc),
+          b.done ? h("small", {style: "color:var(--ember);margin-top:4px"}, "Conquistada")
+            : h("div", {}, h("div", {class: "bar"}, h("i", {style: `width:${b.pct}%`})), h("small", {style: "margin-top:3px"}, `${fmtN(b.current)} de ${b.goal} ${b.unit}`)))))),
+      h("p", {class: "fine"}, c.note));
+  }).catch(() => cq.remove());
   Promise.all([get("/api/passaporte"), get("/api/mapa?fonte=diario")]).then(([ps, mp]) => {
     if (!pp.isConnected) return;
     const types = ps.types.filter(t => t.type !== "—");
@@ -3080,6 +3159,27 @@ async function togglePayroll(on) {
 }
 
 /* ───────────────────────── ajustes ───────────────────────── */
+function profilePanel() {
+  const name = h("input", {value: me.display_name || "", maxlength: 40});
+  const file = h("input", {type: "file", accept: "image/jpeg,image/png,image/webp", hidden: true});
+  const pic = h("div", {class: "pf-pic"});
+  const paintPic = () => put(pic, me.avatar ? h("img", {src: `${me.avatar}?t=${Date.now()}`, alt: ""}) : h("span", {}, (me.display_name || "?").slice(0, 1).toUpperCase()));
+  paintPic();
+  file.addEventListener("change", async () => {
+    const f = file.files[0]; file.value = "";
+    if (!f) return;
+    const r = await act(() => api("PUT", "/api/me/avatar", undefined, f), "Foto atualizada");
+    if (r) { me.avatar = r.avatar; paintPic(); render(); }
+  });
+  return h("div", {class: "panel"}, h("h2", {}, "Perfil"),
+    h("div", {class: "pf"}, pic, h("div", {class: "pf-body"},
+      h("div", {class: "row"}, field("Nome de exibição", name), field("Código de piloto", h("input", {value: me.pilot_code || "", disabled: true}))),
+      h("div", {class: "tools"},
+        h("button", {class: "btn sm", onclick: async () => { const r = await act(() => api("PUT", "/api/me", {display_name: name.value}), "Nome salvo"); if (r) { me.display_name = r.display_name; render(); } }}, "Salvar nome"),
+        h("button", {class: "btn ghost sm", onclick: () => file.click()}, "Trocar foto"),
+        me.avatar ? h("button", {class: "btn ghost sm", onclick: async () => { const r = await act(() => api("DELETE", "/api/me/avatar"), "Foto removida"); if (r) { me.avatar = r.avatar; paintPic(); render(); } }}, "Tirar foto") : null, file),
+      h("p", {class: "fine"}, "Foto em JPEG, PNG ou WebP, até 2 MB. Fica na pasta de dados deste computador; atualizar a LineOps não apaga. O código de piloto segue a companhia escolhida."))));
+}
 function discordPanel() {
   const box = h("div", {class: "panel"}, h("h2", {}, "Discord · pernoites"), skeleton("s"));
   const paint = info => {
@@ -3121,6 +3221,7 @@ view("ajustes", async main => {
         h("div", {class: "tbl", style: "margin-top:8px"}, h("table", {}, h("tbody", {}, batches.map(b => h("tr", {}, h("td", {}, dt(b.imported_at)),
           h("td", {class: "muted"}, b.source_name || "—"), h("td", {class: "t"}, "v" + (b.source_version || "?")),
           h("td", {class: "n"}, `${b.stats.legs_new || 0} novas`), h("td", {class: "n"}, `${b.stats.legs_changed || 0} alteradas`))))))) : null),
+    profilePanel(),
     me && me.features && me.features.pernoite_discord ? discordPanel() : null,
     h("div", {class: "panel"}, h("h2", {}, "Acesso do ACARS"),
       h("p", {class: "muted"}, "O cliente ACARS usa um token próprio: envia dados de voo e não administra nada. Revogue se perder o computador."),
@@ -3186,6 +3287,22 @@ view("ajustes", async main => {
 });
 
 /* ───────────────────────── início ───────────────────────── */
+/* o que há de novo: uma vez por versão, depois de atualizar */
+const NEWS = {"3.0.0": [
+  ["Escala mais rápida e mais certa", "Uma leitura só da escala para todas as telas, índices novos no banco e o app compactado (gzip): as telas abrem mais rápido e o painel de limites, as trocas, o mês e a exportação veem exatamente as mesmas pernas."],
+  ["Paleta de comandos", "Ctrl + K (ou Buscar, na barra lateral): telas, ações, um dia (12/11) ou uma matrícula. Na Escala, ← → mudam o dia, T volta para hoje, D/S/M trocam o modo. ? mostra os atalhos."],
+  ["Escala na sua agenda", "Escala → Texto → Agenda (.ics): Google Agenda, Outlook ou o calendário do celular, com folga, reserva e sobreaviso como dias inteiros."],
+  ["Conquistas", "Na Carreira: marcos tirados do seu diário (voos, horas, pousos manteiga, regiões do Brasil, exterior, rede)."],
+  ["Perfil", "Ajustes › Perfil: foto (qualquer usuário) e nome de exibição."],
+  ["Folgas do seu jeito e senha esquecida", "No gerador: folgas automáticas, nenhuma, ou só as que você marcar no calendário. Na entrada: Esqueci a senha."]]};
+function whatsNew(ver) {
+  let seen = null;
+  try { seen = localStorage.getItem("lineops.versao_vista"); localStorage.setItem("lineops.versao_vista", ver); } catch (e) { return; }
+  const list = NEWS[ver];
+  if (!list || seen === ver) return;
+  dialog(`Novidades da ${ver}`, "O que mudou nesta versão. Seus dados ficaram como estavam (backup automático antes de atualizar).",
+    h("ul", {class: "whatsnew"}, list.map(([t, d]) => h("li", {}, h("b", {}, t), ": ", d))), [{label: "Bora voar", fn: () => {}}]);
+}
 async function boot() {
   try {
     const hl = await fetch("/api/health", {credentials: "same-origin"}).then(r => r.json());
@@ -3204,6 +3321,7 @@ async function boot() {
       if (!ob.done && (!ob.steps.escala || !ob.steps.frota) && ["", "#", "#/", "#/painel"].includes(location.hash)) { wiz.step = 0; location.hash = "#/boas-vindas"; }
     } catch (e) { /* sem assistente */ }
     render();
+    whatsNew(hl.version);
   } catch (e) {
     if (e.status === 401) return showAuth(false);
     document.getElementById("app").replaceChildren(h("div", {class: "auth"}, h("div", {class: "panel box"},

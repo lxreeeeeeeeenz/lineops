@@ -531,3 +531,26 @@ def test_forgot_password_over_http(cl, tmp_path):
     assert cl.post("/api/senha/redefinir", headers=H, json={"username": "piloto", "code": code, "password": "nova-senha-123"}).json()["ok"]
     assert cl.get("/api/me").status_code == 401                                      # a sessão antiga foi encerrada
     assert cl.post("/api/login", json={"username": "piloto", "password": "nova-senha-123"}).status_code == 200
+
+
+def test_versioned_assets_are_cached_and_gzipped(cl):
+    from lineops import __version__
+    r = cl.get(f"/js/app.js?v={__version__}", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200 and "immutable" in r.headers["cache-control"] and r.headers.get("content-encoding") == "gzip"
+    assert cl.get("/js/app.js?v=0.0.1").headers["cache-control"] == "no-cache"          # versão velha: revalida
+
+
+def test_v3_endpoints_over_http(cl):
+    setup_user(cl)
+    assert cl.get("/api/conquistas").json()["total"] >= 10
+    r = cl.get("/api/escala/agenda.ics?inicio=2026-11-01&fim=2026-11-30")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/calendar") and r.text.startswith("BEGIN:VCALENDAR")
+    assert cl.get("/api/escala/agenda.ics").status_code == 400
+    assert cl.put("/api/me/avatar", headers=H, content=b"nada").status_code == 400
+    assert cl.put("/api/me/avatar", headers=H, content=b"\x89PNG\r\n\x1a\n" + b"0" * 64).json()["avatar"] == "/api/me/avatar"
+    assert cl.get("/api/me").json()["avatar"] == "/api/me/avatar"
+    assert cl.get("/api/me/avatar").headers["content-type"] == "image/png"
+    assert cl.delete("/api/me/avatar", headers=H).json()["avatar"] is None
+    assert cl.put("/api/me", headers=H, json={"display_name": "Cmte. Triple"}).json()["display_name"] == "Cmte. Triple"
+    assert cl.get("/api/me").json()["display_name"] == "Cmte. Triple"
+    assert cl.put("/api/me", headers=H, json={"display_name": ""}).status_code == 400

@@ -43,10 +43,8 @@ def _owner(scheds: list[dict], ds: str) -> dict | None:
 
 def _gather(conn, start: str, end: str) -> dict:
     """A escala da carreira no formato que o export_txt do AeroScale lê (serialize_schedule)."""
-    legs = rows(conn.execute("""SELECT * FROM roster_leg WHERE removed_batch IS NULL
-                                AND COALESCE(local_date, substr(dep_utc,1,10)) BETWEEN ? AND ? ORDER BY dep_utc""", (start, end)))
-    for l in legs:
-        l["local_date"] = l["local_date"] or l["dep_utc"][:10]
+    from . import escala
+    legs = escala.legs(conn, start, end)
     scheds = _schedules(conn)
     res = rows(conn.execute("SELECT * FROM roster_reserve WHERE start_date<=? AND end_date>=? ORDER BY start_date", (end, start)))
     by_uid = {}
@@ -195,3 +193,77 @@ def roster_text(conn, start: str, end: str, style: str | None = None, times: boo
                 lines.append(f"({ds[8:10]}) {legs_txt(dl)}")
     return {"text": "\n".join(lines) + "\n", "start": d1.isoformat(), "end": d2.isoformat(), "style": style, "empty": False,
             "legs": len(s["legs"]), "airline": s["airline"]}
+
+
+# ------------------------------------------------------------------ agenda (.ics)
+def _ics(s: str) -> str:
+    return (s or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+
+def _fold(line: str) -> str:
+    """RFC 5545: linhas de até 75 octetos, continuação com espaço."""
+    b = line.encode("utf-8")
+    if len(b) <= 75:
+        return line
+    out, cur = [], b""
+    for ch in line:
+        e = ch.encode("utf-8")
+        if len(cur) + len(e) > (75 if not out else 74):
+            out.append(cur.decode("utf-8"))
+            cur = b""
+        cur += e
+    out.append(cur.decode("utf-8"))
+    return "\r\n ".join(out)
+
+
+def roster_ics(conn, start: str, end: str, career_name: str | None = None) -> dict:
+    """A escala da carreira para o Google Agenda, Outlook ou o calendário do celular: cada perna com o horário certo (UTC,
+    a agenda mostra no seu fuso) e folga, reserva e sobreaviso como dias inteiros. UID estável por perna: importar de
+    novo atualiza em vez de duplicar."""
+    from datetime import datetime, timezone
+
+    from . import escala, journey, visao
+    try:
+        d_a, d_b = date.fromisoformat(start), date.fromisoformat(end)
+    except (TypeError, ValueError):
+        raise FGVError("Período inválido: use AAAA-MM-DD.", code="campo_invalido")
+    if d_b < d_a or (d_b - d_a).days > 400:
+        raise FGVError("Período inválido (no máximo 400 dias).", code="campo_invalido")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    z = lambda iso: iso.replace("-", "").replace(":", "")                              # noqa: E731
+    name = f"Escala {career_name}" if career_name else "Escala LineOps"
+    L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//LineOps//Escala de simulacao//PT-BR", "CALSCALE:GREGORIAN",
+         "METHOD:PUBLISH", f"X-WR-CALNAME:{_ics(name)}"]
+    n = 0
+    for l in escala.legs(conn, start, end):
+        dl, al = journey.local_time(conn, l["dep_utc"], l["adep"]), journey.local_time(conn, l["arr_utc"], l["ades"])
+        kind = {"EXTRA": " (extra)", "SOBREAVISO": " (sobreaviso acionado)", "RESERVA": " (reserva acionada)"}.get(l["activity"] or "", "")
+        title = f"{l['flight_number'] or 'Posicionamento'} {l['adep']}→{l['ades']}{kind}"
+        desc = "\n".join(x for x in [
+            f"Partida {dl['hhmm']} local ({l['dep_utc'][11:16]}Z) em {l['adep']}" if dl else f"Partida {l['dep_utc'][11:16]}Z",
+            f"Chegada {al['hhmm']} local ({l['arr_utc'][11:16]}Z) em {l['ades']}" if al else f"Chegada {l['arr_utc'][11:16]}Z",
+            f"Tipo: {l['type_icao']}" if l.get("type_icao") else None,
+            f"Dado: {l['data_origin']}" + (" (padrão semanal do RPL, confira quando o RPL do dia sair)" if l["data_origin"] == "PROJETADO" else ""),
+            "LineOps: escala de simulação, não é operação real."] if x)
+        L += ["BEGIN:VEVENT", f"UID:{l['uid']}@lineops", f"DTSTAMP:{stamp}", f"DTSTART:{z(l['dep_utc'])}", f"DTEND:{z(l['arr_utc'])}",
+              f"SUMMARY:{_ics(title)}", f"LOCATION:{_ics(l['adep'])}", f"DESCRIPTION:{_ics(desc)}", "END:VEVENT"]
+        n += 1
+    # dias inteiros: folga, reserva e sobreaviso (o mesmo que a tela do mês mostra)
+    m, spans = date(d_a.year, d_a.month, 1), []
+    while m <= d_b:
+        for d in visao.month(conn, m.strftime("%Y-%m"))["days"]:
+            if not (start <= d["date"] <= end) or d["kind"] not in ("FOLGA", "RESERVA", "SOBREAVISO"):
+                continue
+            label = {"FOLGA": "Folga", "RESERVA": f"Reserva {d.get('reserve_at') or ''}".strip(), "SOBREAVISO": "Sobreaviso"}[d["kind"]]
+            if spans and spans[-1]["label"] == label and spans[-1]["to"] == (date.fromisoformat(d["date"]) - timedelta(days=1)).isoformat():
+                spans[-1]["to"] = d["date"]
+            else:
+                spans.append({"label": label, "from": d["date"], "to": d["date"]})
+        m = date(m.year + (m.month // 12), m.month % 12 + 1, 1)
+    for s in spans:
+        a, b = date.fromisoformat(s["from"]), date.fromisoformat(s["to"]) + timedelta(days=1)
+        L += ["BEGIN:VEVENT", f"UID:dia-{s['from']}-{s['label'].split()[0].lower()}@lineops", f"DTSTAMP:{stamp}",
+              f"DTSTART;VALUE=DATE:{a:%Y%m%d}", f"DTEND;VALUE=DATE:{b:%Y%m%d}", f"SUMMARY:{_ics(s['label'])}",
+              "TRANSP:TRANSPARENT", "END:VEVENT"]
+    L.append("END:VCALENDAR")
+    return {"ics": "\r\n".join(_fold(x) for x in L) + "\r\n", "legs": n, "days": len(spans)}

@@ -171,10 +171,8 @@ def _period_legs(conn, leg: dict) -> tuple[list[dict], dict, tuple]:
     p, s = schedule_params(conn, _ld(leg))
     start = (s or {}).get("start_date") or leg["dep_utc"][:10]
     end = (s or {}).get("end_date") or leg["dep_utc"][:10]
-    legs = [dict(r) for r in conn.execute(
-        """SELECT id, uid, flight_number, adep, ades, dep_utc, arr_utc, eet_min, type_icao, activity, local_date, data_origin
-           FROM roster_leg WHERE removed_batch IS NULL AND activity<>'SOBREAVISO'
-             AND COALESCE(local_date, substr(dep_utc,1,10)) BETWEEN ? AND ? ORDER BY dep_utc""", (start, end))]
+    from . import escala
+    legs = escala.crew_legs(conn, start, end)
     return legs, p, (start, end)
 
 

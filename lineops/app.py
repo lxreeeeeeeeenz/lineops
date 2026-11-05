@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
+from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
                careers, carreira, enroute, equipe, externos, feed, ivao, motor, notify, stay, tripulacao, loadsheet as ls_mod, logs, validity, manual, network, ofp as ofp_mod, payroll, pireps, rules, security, troca, posicao, visao)
 from .db import audit, connect, migrate, now_iso, one, pending, rows, tx
 from .errors import FGVError, NotFound
@@ -305,14 +305,35 @@ def create_app(data_dir: str | Path) -> FastAPI:
         p = careers.profile(u["career"])
         return {"id": u["id"], "username": u["username"], "display_name": u["display_name"], "pilot_code": u["pilot_code"], "token_kind": u["kind"],
                 "features": {"payroll": payroll.enabled(conn), "pernoite_discord": pernoite.enabled_for(u)}, "career": p,
-                "avatar": "/api/me/avatar" if avatar.of(u) else None, "disclaimer": careers.disclaimer(u["career"])}
+                "avatar": "/api/me/avatar" if avatar.of(u, data_dir) else None, "disclaimer": careers.disclaimer(u["career"])}
 
     @app.get("/api/me/avatar")
     def me_avatar(u=Depends(auth)):
-        f = avatar.of(u)
+        f = avatar.of(u, data_dir)
         if not f:
             raise NotFound("Sem foto de perfil.")
-        return Response(f.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+        return Response(f.read_bytes(), media_type=avatar.media_type(f), headers={"Cache-Control": "private, no-cache"})
+
+    @app.put("/api/me/avatar")
+    async def me_avatar_put(request: Request, u=Depends(session_only)):
+        avatar.save(u, data_dir, await request.body())
+        return {"ok": True, "avatar": "/api/me/avatar"}
+
+    @app.delete("/api/me/avatar")
+    def me_avatar_del(u=Depends(session_only)):
+        avatar.remove(u, data_dir)
+        return {"ok": True, "avatar": "/api/me/avatar" if avatar.of(u, data_dir) else None}
+
+    @app.put("/api/me")
+    def me_update(b: dict = Body(...), u=Depends(session_only), core=Depends(get_core)):
+        if set(b) - {"display_name"}:
+            raise FGVError("Campos desconhecidos.", code="campo_invalido")
+        name = (b.get("display_name") or "").strip()
+        if not (1 <= len(name) <= 40):
+            raise FGVError("Nome de exibição: 1 a 40 caracteres.", code="campo_invalido")
+        with tx(core):
+            core.execute("UPDATE user SET display_name=? WHERE id=?", (name, u["id"]))
+        return {"ok": True, "display_name": name}
 
     # ----------------------------------------------------------------- carreiras (modos por companhia)
     @app.get("/api/careers")
@@ -471,6 +492,18 @@ def create_app(data_dir: str | Path) -> FastAPI:
         r = _roster_text(conn, inicio, fim, estilo, horarios)
         return Response(r["text"], media_type="text/plain; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="escala-{u["career"].lower()}-{r["start"]}-a-{r["end"]}.txt"'})
+
+    @app.get("/api/conquistas")
+    def achievements(u=Depends(auth), conn=Depends(get_db)):
+        return conquistas.compute(conn)
+
+    @app.get("/api/escala/agenda.ics")
+    def roster_ics(inicio: str = None, fim: str = None, u=Depends(auth), conn=Depends(get_db)):
+        if not inicio or not fim:
+            raise FGVError("Informe o período (inicio e fim).", code="campo_invalido")
+        r = exportar.roster_ics(conn, inicio, fim, careers.profile(u["career"]).get("name"))
+        return Response(r["ics"], media_type="text/calendar; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="escala-{u["career"].lower()}-{inicio}-a-{fim}.ics"'})
 
     # ----------------------------------------------------------------- posição do avião / recomeçar a escala dali
     @app.get("/api/posicao")
@@ -1296,11 +1329,17 @@ def create_app(data_dir: str | Path) -> FastAPI:
     # ----------------------------------------------------------------- front-end estático
     @app.middleware("http")
     async def no_stale_screens(request: Request, call_next):
-        """Tela e scripts sempre revalidados (ETag): depois de atualizar, o navegador não mostra mais a versão antiga."""
+        """A tela (index.html) sempre revalida. Script e estilo pedidos com ?v=<versão> ficam no cache para sempre: a
+        versão nova muda o ?v= e o navegador busca de novo. Sem ?v=, revalida (ETag)."""
         resp = await call_next(request)
-        if not request.url.path.startswith("/api/"):
-            resp.headers["Cache-Control"] = "no-cache"
+        path = request.url.path
+        if not path.startswith("/api/"):
+            versioned = request.query_params.get("v") == __version__ and path.endswith((".js", ".css"))
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable" if versioned else "no-cache"
         return resp
+
+    from starlette.middleware.gzip import GZipMiddleware
+    app.add_middleware(GZipMiddleware, minimum_size=1400)   # app.js de ~280 KB vai em ~80 KB
 
     if WEB.exists():
         app.mount("/", StaticFiles(directory=WEB, html=True), name="web")

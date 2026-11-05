@@ -10,6 +10,36 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0
+
+**Mais rápida e mais certa**
+* **Uma leitura só da escala** (`lineops/escala.py`). O painel de limites, as trocas, o mês, a exportação e o corte da
+  escala leem as mesmas pernas, com a mesma origem do dado. Na 2.x, cada tela tinha a sua consulta e cada uma esquecia
+  uma coisa diferente: daí vieram vários bugs (tripulação composta ignorada, pernas de sobreaviso sobrando depois do
+  corte).
+* **Performance:** índices novos no banco (voo da perna, pernas vivas, PIREP do voo, dias especiais, reservas), cache de
+  páginas do SQLite em memória, tela compactada com gzip (o `app.js` cai de ~280 KB para ~80 KB) e script/estilo com
+  `?v=` guardados no cache do navegador até a próxima versão.
+
+**Novidades de uso**
+* **Paleta de comandos:** Ctrl + K, ou "Buscar" na barra lateral. Dá para ir a qualquer tela, rodar uma ação, abrir um
+  dia ("12/11") ou achar uma matrícula. Atalhos na Escala: ← → (dia, semana ou mês), T (hoje), D/S/M (modo). G abre
+  "Gerar escala" e ? mostra os atalhos.
+* **Escala na agenda:** Escala → Texto → **Agenda (.ics)**. Funciona no Google Agenda, no Outlook e no calendário do
+  celular. Cada perna entra no horário certo, e folga, reserva e sobreaviso entram como dias inteiros. Importar de novo
+  atualiza em vez de duplicar.
+* **Conquistas** (Carreira), tiradas só do diário de bordo: voos, horas, voo noturno, pouso manteiga (critério do
+  fabricante), sequência sem pouso duro, aeroportos, as cinco regiões do Brasil (IBGE), exterior, matrículas, voos
+  online e tipos.
+* **Perfil** (Ajustes): qualquer usuário pode pôr foto (JPEG, PNG ou WebP, até 2 MB, guardada na pasta de dados) e
+  trocar o nome de exibição.
+* **"Novidades da versão"** aparece uma vez depois de atualizar.
+* Também: as folgas do seu jeito no gerador e o "Esqueci a senha" (2.5.3 e 2.5.4).
+
+**Correções**
+* Passaporte: aeroporto estrangeiro (ex.: Ezeiza) contava como Brasil, porque o catálogo do AeroScale guarda o país no
+  campo da UF. Agora conta o país certo.
+
 ## Novidades da 2.5.4
 
 * "Esqueci a senha": se o usuário digitado não existe neste computador, a tela diz quais existem (só depois do código
@@ -332,7 +362,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-2.5.4.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.0.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não
