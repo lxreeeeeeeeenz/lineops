@@ -485,7 +485,9 @@ def test_roster_text_over_http(cl):
 def test_overnight_discord_is_for_everyone(cl):
     setup_user(cl)                                                                   # 3.0.1: "piloto" também tem o recurso
     assert cl.get("/api/me").json()["features"]["pernoite_discord"] is True
-    assert cl.post("/api/pernoite/999999/marcar", headers=H).status_code == 404
+    from lineops import pernoite
+    want = 404 if pernoite.DEFAULT_WEBHOOK else 409                                 # sem webhook nenhuma: pede para cadastrar
+    assert cl.post("/api/pernoite/999999/marcar", headers=H).status_code == want
 
 
 def test_overnight_discord_webhook_settings(cl):
@@ -500,7 +502,8 @@ def test_overnight_discord_webhook_settings(cl):
     assert ok["configured"] and "••••" in ok["masked"] and not ok["default"]
     back = cl.put("/api/pernoite/discord", headers=H, json={"url": ""}).json()     # apagar volta à padrão (se houver)
     assert back["default"] == bool(pernoite.DEFAULT_WEBHOOK)
-    assert cl.post("/api/pernoite/999999/marcar", headers=H).status_code == 404
+    cl.put("/api/pernoite/discord", headers=H, json={"url": "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEF"})
+    assert cl.post("/api/pernoite/999999/marcar", headers=H).status_code == 404     # com webhook: a perna é que não existe
     assert cl.get("/api/aircraft").status_code == 200 and any(a["registration"] == "PR-GXA" for a in cl.get("/api/aircraft").json())
 
 
