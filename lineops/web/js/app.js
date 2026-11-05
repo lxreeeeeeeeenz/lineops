@@ -1037,7 +1037,7 @@ function overnightToggle(d, l, legs) {
   return h("label", {class: "ck pernoite-ck" + (auto ? " auto" : ""), title: st && st.state === "ERRO" ? `Último envio falhou: ${st.error}` : (auto ? "Pela escala, este voo termina em pernoite" : "Marca este voo como pernoite e avisa no Discord")},
     cb, h("b", {}, "PERNOITE"), auto ? h("span", {class: "muted"}, " · na escala") : null, st && st.state === "ERRO" ? h("span", {class: "muted"}, " · falhou") : null);
 }
-/* aviso de pernoite no Discord (só para o usuário cmdt079) */
+/* aviso de pernoite no Discord */
 function overnightRow(d, legs) {
   if (!(me && me.features && me.features.pernoite_discord)) return null;
   const fl = legs.filter(l => l.is_flight !== false && l.activity !== "SOBREAVISO");

@@ -485,20 +485,21 @@ def test_roster_text_over_http(cl):
 def test_overnight_discord_is_for_everyone(cl):
     setup_user(cl)                                                                   # 3.0.1: "piloto" também tem o recurso
     assert cl.get("/api/me").json()["features"]["pernoite_discord"] is True
-    assert cl.get("/api/pernoite/discord").json()["configured"]
     assert cl.post("/api/pernoite/999999/marcar", headers=H).status_code == 404
 
 
-def test_overnight_discord_for_cmdt079(cl):
+def test_overnight_discord_webhook_settings(cl):
+    from lineops import pernoite
     r = cl.post("/api/setup", json={"username": "cmdt079", "password": "senha-forte-1"})
     assert r.status_code == 200
     assert cl.get("/api/me").json()["features"]["pernoite_discord"] is True
     first = cl.get("/api/pernoite/discord").json()
-    assert first["configured"] and first["default"] and "1567661679636906056" in first["masked"]   # a padrão já vem
+    assert first["configured"] == bool(pernoite.DEFAULT_WEBHOOK)                    # padrão só no instalador (segredo do Release)
     assert cl.put("/api/pernoite/discord", headers=H, json={"url": "https://example.com/x"}).status_code == 400
     ok = cl.put("/api/pernoite/discord", headers=H, json={"url": "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEF"}).json()
     assert ok["configured"] and "••••" in ok["masked"] and not ok["default"]
-    assert cl.put("/api/pernoite/discord", headers=H, json={"url": ""}).json()["default"]           # apagar volta à padrão
+    back = cl.put("/api/pernoite/discord", headers=H, json={"url": ""}).json()     # apagar volta à padrão (se houver)
+    assert back["default"] == bool(pernoite.DEFAULT_WEBHOOK)
     assert cl.post("/api/pernoite/999999/marcar", headers=H).status_code == 404
     assert cl.get("/api/aircraft").status_code == 200 and any(a["registration"] == "PR-GXA" for a in cl.get("/api/aircraft").json())
 

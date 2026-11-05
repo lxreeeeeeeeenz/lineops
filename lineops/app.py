@@ -425,7 +425,7 @@ def create_app(data_dir: str | Path) -> FastAPI:
             pernoite.apply_marks(conn, d, d["overnight_posts"])
         return d
 
-    # ----------------------------------------------------------------- aviso de pernoite no Discord (usuário cmdt079)
+    # ----------------------------------------------------------------- aviso de pernoite no Discord
     @app.get("/api/pernoite/discord")
     def overnight_hook(u=Depends(auth), core=Depends(get_core)):
         return {**pernoite.webhook_info(core, u), "auto": pernoite.auto_enabled(core)}

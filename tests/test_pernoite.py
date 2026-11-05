@@ -95,7 +95,7 @@ class FakeDiscord:
 HOOK = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEF-123"
 
 
-def test_discord_overnight_only_for_cmdt079(eng, tmp_path):  # noqa: F811
+def test_discord_overnight(eng, tmp_path):  # noqa: F811
     data, career = eng
     _run(data, career, {**BASE, "seed": 3})
     p = tmp_path / "GLO.db"
@@ -107,7 +107,10 @@ def test_discord_overnight_only_for_cmdt079(eng, tmp_path):  # noqa: F811
     with pytest.raises(FGVError):
         pernoite.set_webhook(core, friend, "https://example.com/hook")
     info = pernoite.webhook_info(core, friend)
-    assert info["configured"] and info["default"] and pernoite.WEBHOOK_RE.match(pernoite.DEFAULT_WEBHOOK)   # a padrão vale sem cadastro
+    if pernoite.DEFAULT_WEBHOOK:                                                     # instalador: a padrão vale sem cadastro
+        assert info["configured"] and info["default"] and pernoite.WEBHOOK_RE.match(pernoite.DEFAULT_WEBHOOK)
+    else:                                                                            # pelo código: sem padrão até cadastrar
+        assert not info["configured"]
     assert pernoite.set_webhook(core, friend, HOOK)["configured"]
     # a última perna de um dia que termina em pernoite fora da base
     day = next(d for d in (journey.day(c, f"2026-11-{k:02d}") for k in range(1, 31)) if d["overnight"] and not d["overnight"]["at_base"])
@@ -166,7 +169,7 @@ def test_reference_fleet(tmp_path):
     t.close()
 
 
-def test_pilot_code_follows_the_career_and_avatar_only_for_cmdt079():
+def test_pilot_code_follows_the_career_and_fixed_avatar():
     from lineops import avatar, careers
     assert careers.pilot_code("GOL001", "GLO") == "GOL001"
     assert careers.pilot_code("GOL001", "TAM") == "TAM001" and careers.pilot_code("GOL001", "AZU") == "AZU001"

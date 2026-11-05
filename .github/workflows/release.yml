@@ -10,8 +10,8 @@ jobs:
   instalador:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -29,6 +29,12 @@ jobs:
           fi
       - name: Testes
         run: python -m pytest tests -q -p no:cacheprovider -rf
+      - name: Webhook padrão do projeto (segredo, nunca no git)
+        shell: bash
+        env:
+          WEBHOOK: ${{ secrets.LINEOPS_DISCORD_WEBHOOK }}
+        run: |
+          if [ -n "$WEBHOOK" ]; then printf 'DISCORD_WEBHOOK = %s\n' "$(python -c 'import json,os; print(json.dumps(os.environ["WEBHOOK"]))')" > lineops/_build_secrets.py; echo "webhook padrão: sim"; else echo "webhook padrão: não (segredo LINEOPS_DISCORD_WEBHOOK vazio)"; fi
       - name: PyInstaller
         run: |
           python -m PyInstaller --noconfirm --clean --distpath dist --workpath build packaging/lineops.spec
@@ -53,7 +59,7 @@ jobs:
           generate_release_notes: true
       - name: Guardar o instalador (execução manual)
         if: "!startsWith(github.ref, 'refs/tags/v')"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: LineOps-Setup-${{ steps.ver.outputs.v }}
           path: dist/LineOps-Setup-*.exe

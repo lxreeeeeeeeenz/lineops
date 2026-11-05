@@ -113,13 +113,17 @@ def test_statistics_and_generated_report(eng, tmp_path):  # noqa: F811
     def opener(req, timeout=None):
         sent.append(_j.loads(req.data.decode()))
         return R(b"")
-    estatisticas.send_generated(tmp_path / "core.db", career, "GLO", res, {"icao_type": "B738"}, opener=opener, wait=True)
-    assert len(sent) == 1 and "piloto" not in _j.dumps(sent[0])                     # sem nome de usuário
-    inst = estatisticas.install_id(core)
-    assert inst and estatisticas.install_id(core) == inst                           # o mesmo código sempre
-    estatisticas.set_share(core, False)
-    estatisticas.send_generated(tmp_path / "core.db", career, "GLO", res, {"icao_type": "B738"}, opener=opener, wait=True)
-    assert len(sent) == 1                                                            # desligado: nada sai
+    estatisticas.WEBHOOK = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz_ABCDEF"   # a do instalador
+    try:
+        estatisticas.send_generated(tmp_path / "core.db", career, "GLO", res, {"icao_type": "B738"}, opener=opener, wait=True)
+        assert len(sent) == 1 and "piloto" not in _j.dumps(sent[0])                 # sem nome de usuário
+        inst = estatisticas.install_id(core)
+        assert inst and estatisticas.install_id(core) == inst                       # o mesmo código sempre
+        estatisticas.set_share(core, False)
+        estatisticas.send_generated(tmp_path / "core.db", career, "GLO", res, {"icao_type": "B738"}, opener=opener, wait=True)
+        assert len(sent) == 1                                                        # desligado: nada sai
+    finally:
+        estatisticas.WEBHOOK = None
     core.close()
 
 

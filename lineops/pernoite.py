@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import threading
 import logging
@@ -94,8 +95,21 @@ def results(diagnostics: list[dict]) -> dict:
 # 3.0.1: a caixa "ESSE VOO É PERNOITE" vale para todo usuário (antes era só do cmdt079)
 WEBHOOK_KEY = "discord_pernoite_webhook"
 # a webhook padrão (pedido do dono da instalação): vale enquanto você não cadastrar outra em Ajustes › Discord
-DEFAULT_WEBHOOK = ("https://discord.com/api/webhooks/1567661679636906056/"
-                   "KJXzu2hPigGFcINK8Vb4f_Y1iM0h1ePFhL1okQw_9Qi_dXo5Dx9-VFJdVH99RW02RJhG")
+def _default_webhook() -> str | None:
+    """A webhook padrão NÃO fica no código (o repositório é público): vem da variável LINEOPS_DISCORD_WEBHOOK ou do
+    arquivo lineops/_build_secrets.py, que o workflow de Release grava a partir do segredo do repositório e nunca vai
+    para o git. Rodando pelo código sem nada disso, não há padrão: cadastre a sua em Ajustes › Discord."""
+    v = os.environ.get("LINEOPS_DISCORD_WEBHOOK")
+    if v:
+        return v.strip()
+    try:
+        from ._build_secrets import DISCORD_WEBHOOK                   # type: ignore
+        return DISCORD_WEBHOOK or None
+    except ImportError:
+        return None
+
+
+DEFAULT_WEBHOOK = _default_webhook()
 WEBHOOK_RE = re.compile(r"^https://(?:(?:ptb|canary)\.)?discord(?:app)?\.com/api/webhooks/(\d{5,25})/([A-Za-z0-9_\-]{20,120})/?$")
 UA = f"LineOps/{__version__} (virtual airline pessoal, self-hosted)"
 
@@ -118,7 +132,7 @@ def webhook_info(core, user) -> dict:
     _require(user)
     w = get_webhook(core)
     m = WEBHOOK_RE.match(w or "")
-    return {"configured": bool(m), "masked": f"…/webhooks/{m.group(1)}/••••" if m else None, "default": w == DEFAULT_WEBHOOK}
+    return {"configured": bool(m), "masked": f"…/webhooks/{m.group(1)}/••••" if m else None, "default": bool(w) and w == DEFAULT_WEBHOOK}
 
 
 def set_webhook(core, user, url: str | None) -> dict:

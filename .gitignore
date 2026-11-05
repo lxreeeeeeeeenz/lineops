@@ -11,3 +11,9 @@ __pycache__/
 .venv/
 venv*/
 packaging/Output/
+# segredo do instalador (gravado pelo workflow de Release a partir do segredo do repositório)
+lineops/_build_secrets.py
+*.db
+*.db-wal
+*.db-shm
+.env

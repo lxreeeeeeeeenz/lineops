@@ -22,7 +22,7 @@ from .db import now_iso, one, rows, tx
 log = logging.getLogger("lineops.estatisticas")
 SHARE_KEY = "estatisticas_envio"           # "1" (padrão) ou "0"
 INSTALL_KEY = "instalacao_id"
-WEBHOOK = None                             # a mesma webhook padrão do aviso de pernoite (pernoite.DEFAULT_WEBHOOK)
+WEBHOOK = None                             # a mesma webhook padrão do aviso de pernoite (pernoite.DEFAULT_WEBHOOK, só no instalador)
 
 
 def _ap(conn, icao: str) -> dict:
@@ -173,7 +173,10 @@ def send_generated(core_path, career_path, airline: str, result: dict, params: d
                 body = generated_payload(cc, airline, result, params, inst)
             finally:
                 cc.close()
-            code, raw = pernoite._http("POST", WEBHOOK or pernoite.DEFAULT_WEBHOOK, body, opener)
+            url = WEBHOOK or pernoite.DEFAULT_WEBHOOK
+            if not url:                                      # rodando pelo código, sem a webhook do projeto: nada sai
+                return
+            code, raw = pernoite._http("POST", url, body, opener)
             if not 200 <= code < 300:
                 log.warning("estatística da escala não enviada: HTTP %s", code)
         except Exception:                                    # noqa: BLE001 — estatística nunca atrapalha a escala
