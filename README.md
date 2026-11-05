@@ -429,7 +429,7 @@ ocupando a porta 8787, a LineOps não conseguia subir e o navegador mostrava o q
   * Lei 13.475 e RBAC 117 aplicados pelo próprio motor; o resultado aparece com os diagnósticos dele;
   * regerar o mesmo período **substitui** a escala, e a equipe avisa a alteração como numa companhia de verdade;
   * **nada inventado:** dias fora da semana de RPL publicada repetem a semana mais nova (ou a mesma semana do ano anterior)
-    e vêm marcados como PROJETADO; o RPL novo chega sozinho (geradorderotas.com.br, autorizado, no máximo a cada 12 h);
+    e vêm marcados como PROJETADO; o RPL novo chega sozinho
   * **Importar escala real (texto)**, como circula entre tripulantes: o motor casa cada voo com o RPL.
   Importar backup do app do AeroScale continua valendo (só entram as escalas da companhia da carreira).
 * **Backup de tudo** (núcleo + carreiras) num .zip com assinatura de cada arquivo; backups antigos do GolOps voltam como a
