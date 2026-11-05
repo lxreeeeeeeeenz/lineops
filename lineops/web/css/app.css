@@ -951,3 +951,5 @@ details.gen-adv .panel{box-shadow:none;border-left:2px solid var(--line);border-
 .fig-btn{cursor:pointer;font:inherit;color:inherit;border:1px solid transparent;background:transparent;text-align:left}
 .fig-btn:hover{border-color:var(--line)}
 .fig-btn.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+/* mais voos (3.0.3) */
+.more-days{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}

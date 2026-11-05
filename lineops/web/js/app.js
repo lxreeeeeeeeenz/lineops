@@ -705,6 +705,7 @@ view("escala", async (main, arg) => {
     h("div", {class: "sub"}, "Gerada pelo motor do AeroScale com o RPL do CGNA (ou importada). Aqui você reserva a perna e escolhe a aeronave.")),
     h("div", {class: "tools"}, h("a", {class: "btn sm", href: "#/gerar"}, icon("mais", 15), "Gerar escala"),
       h("button", {class: "btn ghost sm", onclick: () => rosterTextDialog(roster.date, b)}, "Texto"),
+      h("button", {class: "btn ghost sm", onclick: () => moreFlightsDialog(roster.date), title: "Regerar a partir de um dia, com um mínimo de pernas nos dias escolhidos"}, icon("mais", 15), "Mais voos"),
       h("button", {class: "btn ghost sm", onclick: () => goDate(today())}, "Hoje"), stepper, seg));
   put(main, headEl, skeleton("h"));
   if (roster.mode === "mes") {
@@ -965,6 +966,41 @@ async function tirarInativos(dates, after) {
     f.length ? h("p", {}, h("b", {}, "Preenchidos com voos reais: "), f.join(" · ")) : null,
     l.length ? h("p", {}, h("b", {}, "Ficaram livres (nenhum par de voos reais coube nas regras de jornada): "), l.join(" · ")) : null), [closeBtn]);
   if (after) after(); else render();
+}
+/* mais voos (3.0.3): regera a partir de um dia, com mínimo de pernas por dia escolhido */
+function moreFlightsDialog(day0) {
+  const rows = [];
+  const list = h("div", {class: "more-days"});
+  const addRow = (d, n) => {
+    const di = h("input", {type: "date", value: d || ""}), ni = h("select", {}, [1, 2, 3, 4, 5, 6].map(k => h("option", {value: k, selected: k === (n || 3)}, `${k} perna${k > 1 ? "s" : ""}`)));
+    const r = {di, ni};
+    const el = h("div", {class: "row more-row"}, field("Dia", di), field("No mínimo", ni),
+      h("div", {style: "align-self:end;margin-bottom:13px"}, h("button", {class: "btn ghost sm", type: "button", onclick: () => { rows.splice(rows.indexOf(r), 1); el.remove(); }}, "Tirar")));
+    rows.push(r); list.appendChild(el);
+  };
+  addRow(day0, 3);
+  dialog("Mais voos", "Regera a escala a partir do primeiro dia escolhido, com os mesmos parâmetros da escala atual (folgas pedidas, pernoites, continuações). O que vem antes não muda; a parte nova continua de onde o avião estava.",
+    h("div", {}, list, h("button", {class: "btn ghost sm", type: "button", onclick: () => addRow("", 3)}, icon("mais", 14), "Outro dia"),
+      h("p", {class: "fine"}, "Só voos reais do RPL, dentro das regras de jornada e repouso. Folga regulamentar no dia escolhido troca de dia; reserva não. Se a quantidade não couber, a escala sai assim mesmo e o diagnóstico do dia diz por quê.")),
+    [closeBtn, {label: "Regerar", fn: async () => {
+      const mins = {};
+      rows.forEach(r => { if (r.di.value) mins[r.di.value] = +r.ni.value; });
+      const ds = Object.keys(mins).sort();
+      if (!ds.length) { toast("Escolha pelo menos um dia.", true); return false; }
+      const j = await act(() => post("/api/motor/mais-voos", {day: ds[0], mins}));
+      if (!j) return false;
+      toast("Regerando a partir de " + dm(ds[0]) + "…");
+      const t = setInterval(async () => {
+        let s;
+        try { s = await get(`/api/motor/tarefas/${j.id}`); } catch (e) { clearInterval(t); toast(e.message, true); return; }
+        if (s.state === "running") return;
+        clearInterval(t);
+        if (s.state !== "finished") { toast(s.error || "Não deu para regerar.", true); return; }
+        const notes = (s.result.diagnostics || []).filter(x => (x.code || "").startsWith("minimo_pernas"));
+        notes.forEach(x => toast(x.message, x.level === "warning"));
+        roster.date = ds[0]; render();
+      }, 600);
+    }}]);
 }
 /* ações de cada perna, dentro do cartão (3.0.2b9): reservar, já fiz, abrir o voo, pedir troca, pernoite no Discord */
 function legActions(d, l, legs, fleet) {
@@ -2546,6 +2582,10 @@ view("gerar", async main => {
     ntDate: h("input", {type: "date"}), ntAp: h("input", {placeholder: "ICAO ou IATA: FOR, SBRF…", style: "text-transform:uppercase"})};
   const nights = [];
   const nightBox = h("div", {class: "tools"});
+  const mins = {}, minBox = h("div", {class: "tools"});
+  const minDate = h("input", {type: "date"}), minN = h("select", {}, [1, 2, 3, 4, 5, 6].map(k => h("option", {value: k, selected: k === 3}, `${k} perna${k > 1 ? "s" : ""}`)));
+  const paintMins = () => put(minBox, Object.keys(mins).sort().map(d => h("button", {class: "chip", type: "button", title: "Tirar",
+    onclick: () => { delete mins[d]; paintMins(); }}, `${dm(d)} · mín. ${mins[d]} ×`)));
   const paintNights = () => put(nightBox, nights.map((x, k) => h("button", {class: "chip", type: "button", title: "Tirar",
     onclick: () => { nights.splice(k, 1); paintNights(); }}, `${dm(x.date)} · ${x.airport} ×`)));
   if (prev.icao_type && o.types.some(t => t.type === prev.icao_type)) i.type.value = prev.icao_type;
@@ -2698,7 +2738,8 @@ view("gerar", async main => {
       reserve_min_days: resTouched.v ? +i.rmin.value : null, reserve_max_days: resTouched.v ? +i.rmax.value : null,
       reserve_base_pct: +i.rbase.value, reserve_activation_pct: +i.ract.value, reserve_activation_max_days: +i.ractd.value,
       avoid_madrugada: i.madr.checked, time_pref: i.pref.value || null, seed: i.seed.value === "" ? null : +i.seed.value, requested_off: gen.offs,
-      overnights: nights.map(x => ({date: x.date, airport: x.airport})), days_off_mode: i.offmode.value};
+      overnights: nights.map(x => ({date: x.date, airport: x.airport})), days_off_mode: i.offmode.value,
+      day_legs_min: Object.keys(mins).length ? {...mins} : undefined};
     if (b.days_off_mode === "none") b.requested_off = [];
     if (car.code === "GLO") b.include_cargo = i.cargo.checked;
     b.follow_strength = +i.follow.value;
@@ -2709,7 +2750,7 @@ view("gerar", async main => {
     if (b.start_day) b.replace_from_day = i.replace.checked;
     return b;
   };
-  const remember = b => { try { localStorage.setItem(LS, JSON.stringify({...b, name: undefined, seed: undefined, requested_off: undefined, start_day: undefined, overnights: undefined,
+  const remember = b => { try { localStorage.setItem(LS, JSON.stringify({...b, name: undefined, seed: undefined, requested_off: undefined, start_day: undefined, overnights: undefined, day_legs_min: undefined,
     from_position: undefined, month: undefined, start_date: undefined, end_date: undefined})); } catch (e) { /* só conveniência */ } };
   const showJob = j => {
     if (j.state === "running") return put(out, h("div", {class: "panel"}, h("h2", {}, "Gerando a escala…"),
@@ -2797,7 +2838,14 @@ view("gerar", async main => {
                 if (nights.some(x => x.date === i.ntDate.value)) return toast("Já tem pernoite pedido nessa noite.", true);
                 if (nights.length >= 8) return toast("No máximo 8 pernoites pedidos.", true);
                 nights.push({date: i.ntDate.value, airport: ap}); nights.sort((a, b) => a.date < b.date ? -1 : 1); i.ntAp.value = ""; paintNights();
-              }}, "Adicionar"))), nightBox)),
+              }}, "Adicionar"))), nightBox),
+          h("div", {class: "subpanel"}, h("b", {}, "Mínimo de pernas em dias escolhidos"),
+            h("p", {class: "fine", style: "margin:4px 0 8px"}, "O dia vira dia de voo e o motor só aceita sequências com pelo menos essa quantidade de pernas reais, dentro das regras. Já tem escala? Use “Mais voos” na Escala para regerar só a partir de um dia."),
+            h("div", {class: "row"}, field("Dia", minDate), field("No mínimo", minN), h("div", {style: "align-self:end;margin-bottom:13px"},
+              h("button", {class: "btn ghost sm", type: "button", onclick: () => {
+                if (!minDate.value) return toast("Escolha o dia.", true);
+                mins[minDate.value] = +minN.value; paintMins();
+              }}, "Adicionar"))), minBox)),
         h("details", {class: "panel gen-adv", open: prev.adv_open ? true : null, ontoggle: e => { try { localStorage.setItem(LS + ".adv", e.target.open ? "1" : ""); } catch (x) {} }},
           h("summary", {}, h("b", {}, "Opções avançadas"), h("span", {class: "muted"}, " · aeroportos, pernas e tempos, regras de tripulação, reserva. Sem mexer, vale o padrão da companhia.")),
         h("div", {class: "panel"}, step(4, "Aeroportos"), h("div", {class: "hr"}),
@@ -3657,7 +3705,11 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.2b9": [
+const NEWS = {"3.0.3": [
+  ["Mais voos a partir de um dia", "Na Escala, ao lado de Texto: escolha um ou mais dias e o mínimo de pernas em cada um. A escala é regerada a partir do primeiro dia, com os mesmos parâmetros (folgas pedidas, pernoites, continuações), e encaixa no que vem antes, que não muda."],
+  ["Mínimo de pernas no gerador", "Em Gerar escala › Seu pedido: o dia vira dia de voo, com pelo menos a quantidade escolhida de pernas reais. O diagnóstico diz, dia a dia, se encaixou."],
+  ["Pernoite pedido mais certeiro", "A conferência do pernoite pedido usava a hora UTC em vez da local: em voo que chega depois das 21h, podia dar o pedido como atendido (ou não) errado. Corrigido."]],
+  "3.0.2b9": [
   ["Dia da escala: ações dentro de cada voo", "Reservar, Já fiz, Abrir o voo, Pedir troca e a caixa PERNOITE ficam no cartão da própria perna. Acabou a fileira de botões no fim do dia."],
   ["Frota com resumo e filtros", "Quantas disponíveis, com restrição e indisponíveis (clique para filtrar), busca por matrícula ou configuração, filtro por tipo. As que precisam de atenção vêm primeiro, com o motivo embaixo da situação."],
   ["Gerar escala mais simples", "Só o essencial à vista; o resto em “Opções avançadas”. Pernoites no Discord seguem a escala. Escalas reais de pilotos como referência."]],

@@ -10,6 +10,19 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.3
+
+* **Mais voos a partir de um dia.** Na Escala, ao lado de "Texto", o botão "Mais voos": escolha um ou mais dias e o
+  mínimo de pernas em cada um (1 a 6). A escala é regerada a partir do primeiro dia escolhido, com os mesmos parâmetros
+  da escala atual (folgas pedidas, pernoites pedidos, continuações). O que vem antes do dia não muda, e a parte nova
+  continua de onde o avião estava. Folga regulamentar no dia escolhido troca de dia; reserva não.
+* **Mínimo de pernas no gerador** (Gerar escala › Seu pedido): o dia vira dia de voo e o motor só aceita sequências com
+  pelo menos aquela quantidade de pernas reais do RPL, dentro das regras. O diagnóstico diz, dia a dia, se encaixou;
+  quando não cabe, a escala sai mesmo assim e diz por quê.
+* **Correção:** a conferência do pernoite pedido usava a hora UTC em vez da local. Em voo que chega depois das 21h
+  (horário de Brasília), o pedido podia ser dado como atendido ou não atendido errado, e a "melhor de 4 tentativas"
+  escolhia mal. Corrigido.
+
 ## Novidades da 3.0.2 beta 9
 
 * **Dia da escala: as ações ficam dentro de cada voo.** Reservar, Já fiz, Abrir o voo, Pedir troca e a caixa PERNOITE
@@ -463,7 +476,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.2b9.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.3.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

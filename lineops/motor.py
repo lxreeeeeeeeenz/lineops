@@ -196,7 +196,7 @@ ALLOWED = {"kind", "month", "start_date", "end_date", "base", "icao_type", "mode
            # LineOps: folgas automáticas (regras), nenhuma folga, ou só as escolhidas a dedo
            "days_off_mode",
            # LineOps 3.0.2 (beta): seguir continuações (regras / regras + identificadas / não)
-           "follow_mode", "follow_strength"}
+           "follow_mode", "follow_strength", "day_legs_min"}
 DAYS_OFF_MODES = ("auto", "none", "manual")
 
 
@@ -224,6 +224,67 @@ def clean_params(airline: str, raw: dict) -> dict:
         elif not p.get("requested_off"):
             raise FGVError("Folgas manuais: marque pelo menos um dia (ou escolha “Sem folgas”).", code="campo_invalido")
     return p
+
+
+def more_flights(data_dir, airline: str, career_path: Path, day: str, mins: dict, user_id=None, share_stats: bool = False) -> dict:
+    """Regerar a escala a partir de um dia, com os mesmos parâmetros da escala que hoje é dona desse dia, pedindo um
+    mínimo de pernas em dias escolhidos ({"AAAA-MM-DD": n}). O que vem antes do dia não muda; a nova parte continua de
+    onde o avião estava (mesmo encaixe do "gerar a partir do dia"). Folgas pedidas, pernoites pedidos e a força das
+    continuações da escala original continuam valendo."""
+    from . import journey
+    from .db import connect as lconnect
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        raise FGVError("Dia inválido.", code="campo_invalido") from None
+    if not mins:
+        mins = {}
+    cc = lconnect(career_path)
+    try:
+        p, sched = journey.schedule_params(cc, day)
+    finally:
+        cc.close()
+    if not sched:
+        raise FGVError(f"Não há escala gerada que cubra {day[8:10]}/{day[5:7]}: gere a escala do período antes.", code="sem_escala", status=409)
+    if p.get("imported"):
+        raise FGVError("Esta parte da escala é uma escala real importada: o motor não a regera.", code="escala_importada", status=409)
+    skip = {"name", "start_day", "replace_from_day", "from_position", "day_legs_min", "overnights", "follow_mode", "month"}
+    body = {k: v for k, v in p.items() if k in ALLOWED and k not in skip and v not in (None, "")}
+    body["kind"], body["start_date"], body["end_date"] = "avulsa", sched["start_date"], sched["end_date"]
+    ov = [{"date": r.get("night") or r.get("date"), "airport": r.get("icao") or r.get("airport")} for r in (p.get("overnights") or [])
+          if (r.get("night") or r.get("date") or "") >= day]
+    if ov:
+        body["overnights"] = ov
+    body["requested_off"] = [x for x in (p.get("requested_off") or []) if x >= day]
+    body.update({"start_day": day, "replace_from_day": True, "day_legs_min": {k: v for k, v in mins.items() if v}})
+    if not body["day_legs_min"]:
+        body.pop("day_legs_min")
+    return generate(data_dir, airline, body, career_path, user_id=user_id, share_stats=share_stats)
+
+
+def _min_note(db, sid: int, p: dict):
+    """Diz no diagnóstico, dia a dia, se o mínimo de pernas pedido saiu (contado na escala pronta, pela data local)."""
+    from datetime import datetime, timezone
+    from .aeroscale import catalog
+    from .aeroscale.airports import get_tz, to_local
+    apm = catalog.airport_map(db)
+    n = {}
+    for r in db.execute("SELECT adep, dep_utc, notes FROM schedule_legs WHERE schedule_id=? AND data_origin<>'SUGESTAO'", (sid,)):
+        if "DHD" in (r[2] or "").upper() or "extra" in (r[2] or "").lower():
+            continue
+        dt = datetime.fromisoformat(r[1].replace("Z", "+00:00"))
+        ld = to_local(dt, catalog.airport_tz(apm, r[0])).date().isoformat()
+        n[ld] = n.get(ld, 0) + 1
+    rows_ = json.loads(db.execute("SELECT diagnostics FROM schedules WHERE id=?", (sid,)).fetchone()[0] or "[]")
+    pin = []
+    for d, need in sorted(p["day_legs_min"].items()):
+        got = n.get(d, 0)
+        dm = f"{d[8:10]}/{d[5:7]}"
+        pin.append({"level": "info" if got >= need else "warning", "code": "minimo_pernas_ok" if got >= need else "minimo_pernas_falhou", "date": d,
+                    "message": f"Mínimo de {need} perna(s) em {dm}: " + (f"encaixado ({got} perna(s))." if got >= need else
+                               f"não deu ({got} perna(s)). Nenhuma sequência de voos reais do RPL com essa quantidade coube nas regras de "
+                               "jornada e no horário do dia (ou o dia era reserva ou folga fixa).")})
+    db.execute("UPDATE schedules SET diagnostics=? WHERE id=?", (json.dumps(pin + rows_, ensure_ascii=False), sid))
 
 
 def _follow_note(db, sid: int, p: dict):
@@ -293,6 +354,25 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None,
             from .planner_ext import follow_stash
             p["follow"] = follow_stash(fol)
         p["follow_strength"] = fs
+        dlm = p.pop("day_legs_min", None)
+        if dlm:
+            if not isinstance(dlm, dict):
+                raise FGVError("Mínimo de pernas por dia: {\"AAAA-MM-DD\": n}.", code="campo_invalido")
+            rp = scheduler.resolve_params(c, dict(p))
+            out = {}
+            for k, v in dlm.items():
+                try:
+                    dd, n = date.fromisoformat(str(k)[:10]), int(v)
+                except (TypeError, ValueError):
+                    raise FGVError(f"Mínimo de pernas: dia ou número inválido ({k}: {v}).", code="campo_invalido") from None
+                if not 1 <= n <= 8:
+                    raise FGVError("Mínimo de pernas por dia: de 1 a 8.", code="campo_invalido")
+                if not rp["start_date"] <= dd.isoformat() <= rp["end_date"]:
+                    raise FGVError(f"O dia {dd:%d/%m} está fora do período da escala.", code="campo_invalido")
+                if dd.isoformat() in (p.get("requested_off") or []):
+                    raise FGVError(f"{dd:%d/%m} é folga pedida: não dá para exigir voos nesse dia.", code="campo_invalido")
+                out[dd.isoformat()] = n
+            p["day_legs_min"] = out
         if p.get("overnights"):
             from . import pernoite
             from .db import connect as lconnect
@@ -321,6 +401,8 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None,
             sid = _generate_with_nights(db, p, start_pos, progress)
             if p.get("follow"):
                 _follow_note(db, sid, p)
+            if p.get("day_legs_min"):
+                _min_note(db, sid, p)
         finally:
             from .planner_ext import follow_drop
             follow_drop(p.get("follow"))

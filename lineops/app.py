@@ -813,6 +813,15 @@ def create_app(data_dir: str | Path) -> FastAPI:
         return motor.generate(data_dir, u["career"], b, careers.career_path(data_dir, u["career"]), user_id=u["id"],
                               share_stats=estatisticas.share_enabled(core))
 
+    @app.post("/api/motor/mais-voos")
+    def motor_more(b: dict = Body(...), u=Depends(session_only), core=Depends(get_core)):
+        """{day: "AAAA-MM-DD", mins: {"AAAA-MM-DD": n}}: regera a partir do dia, com o mínimo de pernas nos dias pedidos."""
+        mins = b.get("mins") or {}
+        if not isinstance(mins, dict):
+            raise FGVError("mins: {dia: pernas}.", code="campo_invalido")
+        return motor.more_flights(data_dir, u["career"], careers.career_path(data_dir, u["career"]), str(b.get("day") or ""), mins,
+                                  user_id=u["id"], share_stats=estatisticas.share_enabled(core))
+
     # ----------------------------------------------------------------- continuações (beta)
     @app.get("/api/continuacoes")
     def continuations(q: str = "", u=Depends(auth), conn=Depends(get_db)):
