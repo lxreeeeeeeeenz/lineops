@@ -398,6 +398,8 @@ def create_app(data_dir: str | Path) -> FastAPI:
     @app.get("/api/today")
     def today(u=Depends(auth), conn=Depends(get_db)):
         equipe.run(conn)
+        if pernoite.enabled_for(u):                       # trocas aprovadas, cortes, regerações: os avisos do Discord seguem a escala
+            pernoite.sync_later(careers.core_path(data_dir), careers.career_path(data_dir, u["career"]), u["id"], min_interval=300)
         d = journey.today_overview(conn)
         if pernoite.enabled_for(u) and d.get("legs"):
             pernoite.apply_marks(conn, d, pernoite.status_for(conn, [l["id"] for l in d["legs"] if l.get("id")]))
@@ -426,7 +428,19 @@ def create_app(data_dir: str | Path) -> FastAPI:
     # ----------------------------------------------------------------- aviso de pernoite no Discord (usuário cmdt079)
     @app.get("/api/pernoite/discord")
     def overnight_hook(u=Depends(auth), core=Depends(get_core)):
-        return pernoite.webhook_info(core, u)
+        return {**pernoite.webhook_info(core, u), "auto": pernoite.auto_enabled(core)}
+
+    @app.put("/api/pernoite/auto")
+    def overnight_auto(b: dict = Body(...), u=Depends(session_only), core=Depends(get_core)):
+        on = pernoite.set_auto(core, bool(b.get("on")))
+        if on:
+            pernoite.sync_later(careers.core_path(data_dir), careers.career_path(data_dir, u["career"]), u["id"])
+        return {"auto": on}
+
+    @app.post("/api/pernoite/sincronizar")
+    def overnight_sync(u=Depends(session_only), core=Depends(get_core), conn=Depends(get_db)):
+        """Agora, na hora: edita/apaga os avisos enviados conforme a escala atual e, se ligado, manda os novos."""
+        return pernoite.sync(conn, core, u)
 
     @app.put("/api/pernoite/discord")
     def overnight_hook_set(b: dict = Body(...), u=Depends(session_only), core=Depends(get_core)):
@@ -531,7 +545,9 @@ def create_app(data_dir: str | Path) -> FastAPI:
         dates = b.get("dates")
         if dates is not None and (not isinstance(dates, list) or not all(isinstance(x, str) for x in dates)):
             raise FGVError("dates: lista de datas.", code="campo_invalido")
-        return inativo.remove(conn, data_dir, dates, fill=bool(b.get("fill", True)))
+        r = inativo.remove(conn, data_dir, dates, fill=bool(b.get("fill", True)))
+        pernoite.sync_later(careers.core_path(data_dir), careers.career_path(data_dir, u["career"]), u["id"])
+        return r
 
     @app.post("/api/escala/apagar-tudo")
     def wipe_all(b: dict = Body(default={}), u=Depends(session_only), conn=Depends(get_db)):

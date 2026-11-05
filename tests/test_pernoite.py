@@ -202,3 +202,32 @@ def test_marked_flight_sets_the_overnight_airport(eng, tmp_path):  # noqa: F811
     pernoite.apply_marks(c, d3, pernoite.status_for(c, [l["id"] for l in d3["legs"]]))
     assert d3["overnight"] == day["overnight"]                                       # desmarcou: volta ao que a escala diz
     c.close()
+
+
+def test_sync_follows_the_roster(eng, tmp_path):  # noqa: F811
+    """3.0.2b7: automático liga → todo pernoite fora da base é enviado; voo que sai da escala → mensagem apagada;
+    voo que muda → mensagem editada; nada mudou → nada vai para o Discord."""
+    data, career = eng
+    _run(data, career, {**BASE, "seed": 3})
+    p = tmp_path / "GLO.db"
+    shutil.copy(career, p)
+    c = db.connect(p)
+    user = {"id": 1, "username": "piloto", "display_name": "Piloto"}
+    pernoite.set_webhook(c, user, HOOK)
+    fake = FakeDiscord()
+    r = pernoite.sync(c, c, user, opener=fake, auto=True, now="2026-11-01T00:00:00Z")
+    want = pernoite.detected_overnights(c, "2026-11-01")
+    assert want and r["sent"] == len(want) and r["errors"] == 0
+    assert all(m == "POST" for m, _u, _b in fake.calls)
+    fake.calls.clear()
+    r = pernoite.sync(c, c, user, opener=fake, auto=True, now="2026-11-01T00:00:00Z")
+    assert r == {"edited": 0, "removed": 0, "sent": 0, "errors": 0, "unchanged": len(want)} and not fake.calls   # idempotente
+    gone, changed = want[0], want[1]
+    c.execute("UPDATE roster_leg SET removed_batch=1 WHERE id=?", (gone["id"],))
+    c.execute("INSERT INTO airport_info(icao, hotel, updated_at) VALUES (?, 'Hotel Novo', '2026-11-01T00:00:00Z')", (changed["ades"],))
+    c.commit()
+    r = pernoite.sync(c, c, user, opener=fake, auto=False, now="2026-11-01T00:00:00Z")
+    assert r["removed"] == 1 and r["edited"] >= 1 and r["sent"] == 0
+    assert ("DELETE", f"{HOOK}/messages/1234567890", None) in fake.calls and any(m == "PATCH" for m, _u, _b in fake.calls)
+    assert pernoite.status_for(c, [gone["id"]])[str(gone["id"])]["state"] == "REMOVIDO"
+    c.close()

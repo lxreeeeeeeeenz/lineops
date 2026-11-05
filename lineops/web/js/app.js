@@ -2442,7 +2442,7 @@ view("gerar", async main => {
   // o formulário inteiro do gerador do AeroScale (mesmos campos, mesmos padrões); lembra o que você usou por companhia
   const LS = `lineops.gerar.${car.code || "x"}`;
   let prev = {};
-  try { prev = JSON.parse(localStorage.getItem(LS) || "{}") || {}; } catch (e) { prev = {}; }
+  try { prev = JSON.parse(localStorage.getItem(LS) || "{}") || {}; prev.adv_open = !!localStorage.getItem(LS + ".adv"); } catch (e) { prev = {}; }
   const pv = (k, dflt) => (prev[k] !== undefined && prev[k] !== null ? prev[k] : dflt);
   const num = (k, dflt, attrs = {}) => h("input", {type: "number", value: pv(k, dflt ?? ""), ...attrs});
   const ck = (k, dflt) => h("input", {type: "checkbox", checked: !!pv(k, dflt)});
@@ -2730,12 +2730,27 @@ view("gerar", async main => {
             h("p", {class: "fine", style: "margin:0 0 6px"}, "Sobreaviso: em casa, 3 a 12 h; no máximo 8 por mês (Lei 13.475, art. 43)."),
             h("label", {class: "ck"}, i.longoff, "Um bloco longo de folga no mês (5 a 7 dias) e no máximo uma folga isolada"),
             h("label", {class: "ck"}, i.inactive, "Dia INATIVO fora da base (depois de 2 madrugadas ou no meio da viagem)"))),
-        h("div", {class: "panel"}, step(3, "Aeroportos"), h("div", {class: "hr"}),
+        h("div", {class: "panel"}, step(3, "Seu pedido"), h("div", {class: "hr"}),
+          offReq, h("div", {class: "row", style: "margin-top:8px"}, field("Período do dia", i.pref), field("Semente (repetir uma escala)", i.seed)),
+          h("label", {class: "ck"}, i.madr, "Evitar madrugada"),
+          h("div", {class: "subpanel"}, h("b", {}, "Pernoite pedido"),
+            h("p", {class: "fine", style: "margin:4px 0 8px"}, "Escolha a noite e o aeroporto onde quer dormir. O motor termina o dia ali com voos reais do RPL, dentro das regras; folga regulamentar no caminho troca de dia. Se não der, a escala sai mesmo assim e o diagnóstico diz por quê."),
+            h("div", {class: "row"}, field("Noite de", i.ntDate), field("Aeroporto", i.ntAp), h("div", {style: "align-self:end;margin-bottom:13px"},
+              h("button", {class: "btn ghost sm", type: "button", onclick: () => {
+                const ap = i.ntAp.value.trim().toUpperCase();
+                if (!i.ntDate.value || !ap) return toast("Escolha a noite e o aeroporto.", true);
+                if (nights.some(x => x.date === i.ntDate.value)) return toast("Já tem pernoite pedido nessa noite.", true);
+                if (nights.length >= 8) return toast("No máximo 8 pernoites pedidos.", true);
+                nights.push({date: i.ntDate.value, airport: ap}); nights.sort((a, b) => a.date < b.date ? -1 : 1); i.ntAp.value = ""; paintNights();
+              }}, "Adicionar"))), nightBox)),
+        h("details", {class: "panel gen-adv", open: prev.adv_open ? true : null, ontoggle: e => { try { localStorage.setItem(LS + ".adv", e.target.open ? "1" : ""); } catch (x) {} }},
+          h("summary", {}, h("b", {}, "Opções avançadas"), h("span", {class: "muted"}, " · aeroportos, pernas e tempos, regras de tripulação, reserva. Sem mexer, vale o padrão da companhia.")),
+        h("div", {class: "panel"}, step(4, "Aeroportos"), h("div", {class: "hr"}),
           h("div", {class: "row"}, field("Base / início", i.base), field("Retorno à base", i.rtb)),
           field("Aeroportos de preferência (escala direcionada)", i.prefa),
           h("p", {class: "fine", style: "margin:-6px 0 10px"}, "O gerador puxa a escala para esses aeroportos e, quando não há voo direto, para os que têm voo até eles."),
           h("div", {class: "row"}, field("Força da preferência", i.prefs), field("Evitar como destino", i.avoida))),
-        h("div", {class: "panel"}, step(4, "Pernas e tempos"), h("div", {class: "hr"}),
+        h("div", {class: "panel"}, step(5, "Pernas e tempos"), h("div", {class: "hr"}),
           h("div", {class: "row"}, field("Duração mín. da perna (min)", i.lmin), field("Duração máx. da perna (min)", i.lmax)),
           h("div", {class: "row"}, field("Pernas por dia (mín.)", i.legsmin), field("Pernas por dia (máx.)", i.legsmax)),
           h("div", {class: "row"}, field("Solo mínimo", i.turnmode), mtWrap, field("Solo máximo (min)", i.maxturn)),
@@ -2753,7 +2768,7 @@ view("gerar", async main => {
             h("a", {href: "#/continuacoes", class: "btn ghost sm"}, "Ver e cadastrar"))), folOut,
           car.code === "GLO" ? h("label", {class: "ck"}, i.cargo, "Incluir voos de carga (GOL 9xxx, normalmente GOLLOG). Desligado, eles ficam fora da escala e das trocas") : null,
           h("div", {class: "row"}, field("Chance de anormalidade: repetição de trecho (% dos dias)", i.anom))),
-        h("div", {class: "panel"}, step(5, "Regras de tripulação"), h("div", {class: "hr"}),
+        h("div", {class: "panel"}, step(6, "Regras de tripulação"), h("div", {class: "hr"}),
           field("Perfil", i.crew), h("div", {class: "row"}, field("Folgas mínimas/mês", i.offmin), field("Máx. dias seguidos", i.maxcons)),
           h("label", {class: "ck"}, i.cdo, "Folgas regulamentares: mínimo mensal proporcional, folga após no máximo 6 dias e um sábado+domingo no mês; retorno da folga a partir das 10:00"),
           h("label", {class: "ck"}, i.cfb, "Folga começa na base (o dia anterior à folga termina na base)"),
@@ -2761,23 +2776,11 @@ view("gerar", async main => {
           h("label", {class: "ck"}, i.cmon, "Limites de 80 h de voo/mês (jato) ou 85 h (turbo-hélice), 44 h semanais e 176 h mensais de jornada"),
           h("p", {class: "fine"}, "Sempre aplicados com o perfil ligado: repouso de 12/16/24 h conforme a jornada (Lei 13.475, art. 48). Regras internas de cada empresa (acordos coletivos) não são públicas; ajuste os limites acima se quiser algo mais restrito."),
           h("button", {class: "btn ghost sm", type: "button", onclick: saveDefault}, "Salvar dias da semana e regras como padrão")),
-        h("div", {class: "panel"}, step(6, "Reserva automática"), h("div", {class: "hr"}),
+        h("div", {class: "panel"}, step(7, "Reserva automática"), h("div", {class: "hr"}),
           h("div", {class: "row"}, field("Blocos de reserva", i.res), field("Duração mínima (dias)", i.rmin), field("máxima", i.rmax)),
           h("div", {class: "row"}, field("Chance de ser na base (%)", i.rbase), field("Chance de acionamento (%)", i.ract), field("Acionamento dura até (dias)", i.ractd)),
-          h("p", {class: "fine"}, "Sorteada entre 3 e 6 dias seguidos. Acionada, recebe voos reais do RPL que saem do local da reserva e voltam a ele; sem sequência compatível, o acionamento fica registrado como inviável, sem inventar voos.")),
-        h("div", {class: "panel"}, step(7, "Seu pedido"), h("div", {class: "hr"}),
-          offReq, h("div", {class: "row", style: "margin-top:8px"}, field("Período do dia", i.pref), field("Semente (repetir uma escala)", i.seed)),
-          h("label", {class: "ck"}, i.madr, "Evitar madrugada"),
-          h("div", {class: "subpanel"}, h("b", {}, "Pernoite pedido"),
-            h("p", {class: "fine", style: "margin:4px 0 8px"}, "Escolha a noite e o aeroporto onde quer dormir. O motor termina o dia ali com voos reais do RPL, dentro das regras; folga regulamentar no caminho troca de dia. Se não der, a escala sai mesmo assim e o diagnóstico diz por quê."),
-            h("div", {class: "row"}, field("Noite de", i.ntDate), field("Aeroporto", i.ntAp), h("div", {style: "align-self:end;margin-bottom:13px"},
-              h("button", {class: "btn ghost sm", type: "button", onclick: () => {
-                const ap = i.ntAp.value.trim().toUpperCase();
-                if (!i.ntDate.value || !ap) return toast("Escolha a noite e o aeroporto.", true);
-                if (nights.some(x => x.date === i.ntDate.value)) return toast("Já tem pernoite pedido nessa noite.", true);
-                if (nights.length >= 8) return toast("No máximo 8 pernoites pedidos.", true);
-                nights.push({date: i.ntDate.value, airport: ap}); nights.sort((a, b) => a.date < b.date ? -1 : 1); i.ntAp.value = ""; paintNights();
-              }}, "Adicionar"))), nightBox)),
+          h("p", {class: "fine"}, "Sorteada entre 3 e 6 dias seguidos. Acionada, recebe voos reais do RPL que saem do local da reserva e voltam a ele; sem sequência compatível, o acionamento fica registrado como inviável, sem inventar voos."))
+        ),
         h("div", {class: "tools gen-go"}, h("button", {class: "btn", onclick: go}, "Gerar escala")), out),
       h("div", {},
         h("div", {class: "panel"}, h("h2", {}, "RPL do CGNA"), h("div", {class: "hr"}),
@@ -3490,9 +3493,13 @@ function discordPanel() {
   const box = h("div", {class: "panel"}, h("h2", {}, "Discord · pernoites"), skeleton("s"));
   const paint = info => {
     const url = h("input", {type: "url", placeholder: "https://discord.com/api/webhooks/…", autocomplete: "off"});
+    const auto = h("input", {type: "checkbox", checked: !!info.auto});
+    auto.addEventListener("change", async () => { const r = await act(() => api("PUT", "/api/pernoite/auto", {on: auto.checked}), auto.checked ? "Pernoites automáticos ligados: enviando os da escala atual" : "Pernoites automáticos desligados"); if (!r) auto.checked = !auto.checked; });
     put(box, h("h2", {}, "Discord · pernoites"),
       h("p", {class: "muted"}, "Na escala, cada voo ganha a caixa “ESSE VOO É PERNOITE”. Marcada, vai para esta webhook: voo, trecho, data, chegada (hora local), cidade do pernoite, próxima apresentação e hotel (o de Ajustes › Pernoites). Desmarcar apaga a mensagem."),
       info.configured ? note("go", "ok", info.default ? "Usando a webhook padrão: " : "Webhook cadastrada: ", h("span", {class: "mono"}, info.masked)) : note("hold", "alerta", "Nenhuma webhook cadastrada ainda."),
+      h("label", {class: "ck"}, auto, h("span", {}, h("b", {}, "Pernoites automáticos: "), "a cada atualização da escala (gerar, troca aprovada, corte, INATIVO tirado), todo pernoite fora da base é enviado sozinho; os avisos já enviados são editados quando o voo muda e apagados quando o voo sai da escala.")),
+      h("div", {class: "tools", style: "margin:0 0 12px"}, h("button", {class: "btn ghost sm", onclick: async () => { const r = await act(() => post("/api/pernoite/sincronizar")); if (r) toast(r.note ? r.note : `Discord: ${r.sent} enviado(s), ${r.edited} editado(s), ${r.removed} apagado(s), ${r.unchanged} sem mudança${r.errors ? `, ${r.errors} erro(s)` : ""}`); }}, "Sincronizar com a escala agora")),
       field("Trocar por outra webhook (Discord › Editar canal › Integrações › Webhooks › Copiar URL)", url),
       h("div", {class: "tools"},
         h("button", {class: "btn sm", onclick: async () => { const r = await act(() => api("PUT", "/api/pernoite/discord", {url: url.value}), "Webhook salva"); if (r) paint(r); }}, "Salvar"),
@@ -3595,7 +3602,11 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.2b6": [
+const NEWS = {"3.0.2b7": [
+  ["Pernoites no Discord seguem a escala", "Ajustes › Discord: “Pernoites automáticos”. A cada atualização da escala (gerar, troca aprovada, corte, INATIVO tirado), todo pernoite fora da base é enviado sozinho; os avisos já enviados são editados quando o voo muda e apagados quando o voo sai da escala. Botão “Sincronizar agora” para forçar."],
+  ["Gerar escala mais simples", "Só o essencial à vista (período, tripulante, seu pedido); aeroportos, pernas, regras e reserva ficam em “Opções avançadas”. O botão Gerar acompanha a rolagem."],
+  ["Biblioteca técnica e MEL", "Importe os seus PDF (MEL, CDL, QRH). A MEL é lida item a item e a discrepância pode ser aberta pelo item, com prazo pela categoria."]],
+  "3.0.2b6": [
   ["Biblioteca técnica", "Tela nova: importe os seus PDF (MEL, CDL, QRH, FCOM). Ficam só na companhia atual, como texto pesquisável por página. Nada vem com a LineOps: são documentos seus."],
   ["MEL item a item", "A MEL no formato AMOS (GOL) é lida item a item: código ATA, categoria de reparo (A/B/C/D), instalados, exigidos, condições, placard e procedimentos (M)/(O). Navegue por capítulo ou busque pelo nome."],
   ["Discrepância pela MEL", "Na Frota, ao registrar uma discrepância, escolha o item da MEL: o código, o título, a categoria e o prazo (B 3 dias, C 10, D 120) vêm dele; com procedimento (O), a restrição vira “apenas informa” com o texto."],

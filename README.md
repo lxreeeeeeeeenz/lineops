@@ -10,6 +10,18 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.2 beta 7
+
+* **Os avisos de pernoite no Discord seguem a escala.** Ajustes › Discord › "Pernoites automáticos": a cada atualização
+  da escala (gerar, troca aprovada, corte, INATIVO tirado), todo dia que termina em pernoite fora da base é enviado
+  sozinho. Os avisos já enviados são editados quando o voo muda (horário, próxima apresentação, hotel) e apagados quando o
+  voo sai da escala. Mesmo com o automático desligado, os já enviados são mantidos em dia. "Sincronizar com a escala
+  agora" força a conferência. Voo marcado à mão que a escala não vê como pernoite aparece como "marcado pelo piloto",
+  sem o tempo no solo (que confundia: "0 h 40 no solo").
+* **Gerar escala mais simples:** só o essencial à vista (período, tripulante, seu pedido). Aeroportos, pernas e tempos,
+  regras de tripulação e reserva ficam em "Opções avançadas", recolhidas (a LineOps lembra se você abriu). O botão
+  "Gerar escala" acompanha a rolagem.
+
 ## Novidades da 3.0.2 beta 6
 
 * **Biblioteca técnica** (tela nova, ou Ctrl + K › "Biblioteca"). Importe os seus PDF: MEL, CDL, QRH, FCOM. O texto
@@ -429,7 +441,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.2b6.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.2b7.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

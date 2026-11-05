@@ -363,6 +363,9 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None,
         out = {"schedule_id": sid, "name": s.get("name"), "start_date": s.get("start_date"), "end_date": s.get("end_date"),
                "legs": len(s.get("legs") or []), "diagnostics": diags,
                "import": {k: st.get(k) for k in ("legs_new", "legs_changed", "legs_removed", "legs_unchanged", "legs_total", "warnings")}}
+        if user_id is not None:
+            from . import careers, pernoite
+            pernoite.sync_later(careers.core_path(Path(data_dir)), career_path, user_id)   # os avisos de pernoite seguem a escala nova
         if out["legs"] and share_stats:
             from . import careers, estatisticas
             estatisticas.send_generated(careers.core_path(Path(data_dir)), career_path, airline, out, p)   # em segundo plano

@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import json
+import pathlib
+import threading
 import logging
 import re
 import urllib.error
@@ -200,7 +202,8 @@ def message(info: dict, color: int | None = None) -> dict:
          + (f" ({_dm(info['arr_date'])})" if info.get("arr_date") and info["arr_date"] != info["date"] else "")
          + f" · {info['arr_utc'][11:16]}Z", "inline": True},
         {"name": "Pernoite", "value": info["city"] + (f"/{info['uf']}" if info.get("uf") else "")
-         + (f" · {info['rest_min'] // 60} h {info['rest_min'] % 60:02d} no solo" if info.get("rest_min") else ""), "inline": True},
+         + (f" · {info['rest_min'] // 60} h {info['rest_min'] % 60:02d} no solo" if info.get("rest_min") and info.get("detected")
+            else " · marcado pelo piloto" if not info.get("detected") else ""), "inline": True},
         {"name": "Próxima apresentação", "value": (f"{_dm(nx['report_date'])} {hm(nx['report_local'])} local · {nx['flight_number'] or 'voo'} "
                                                    f"{nx['adep']}→{nx['ades']}" if nx and nx.get("report_local") else
                                                    (f"{nx['flight_number'] or 'voo'} {nx['adep']}→{nx['ades']}" if nx else "sem próximo voo na escala")),
@@ -310,3 +313,137 @@ def _discord_error(code: int, raw: bytes) -> str:
     if code == 0:
         return "sem conexão"
     return f"HTTP {code}" + (f": {m}" if m else "")
+
+
+# ------------------------------------------------------------------ a escala mudou: os avisos seguem a escala (3.0.2b7)
+AUTO_KEY = "pernoite_auto"             # "1": todo pernoite fora da base detectado na escala é enviado sozinho
+SYNC_DAYS = 62
+
+
+def auto_enabled(core) -> bool:
+    r = one(core.execute("SELECT value FROM setting WHERE key=?", (AUTO_KEY,)))
+    return bool(r and r["value"] == "1")
+
+
+def set_auto(core, on: bool) -> bool:
+    with tx(core):
+        core.execute("INSERT INTO setting(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (AUTO_KEY, "1" if on else "0"))
+    return on
+
+
+def _payload_key(body: dict) -> str:
+    """O que, mudando, exige editar a mensagem no Discord (campos do embed, sem a cor)."""
+    e = (body.get("embeds") or [{}])[0]
+    return json.dumps({"t": e.get("title"), "f": e.get("fields")}, ensure_ascii=False, sort_keys=True)
+
+
+def detected_overnights(conn, start: str, days: int = SYNC_DAYS) -> list[dict]:
+    """A última perna de cada dia que termina em pernoite fora da base (a mesma regra do dia da escala)."""
+    from datetime import date, timedelta
+    from . import escala
+    d0 = date.fromisoformat(start[:10])
+    legs = escala.legs(conn, d0.isoformat(), (d0 + timedelta(days=days)).isoformat(), flights_only=True)
+    out = []
+    for a, b in zip(legs, legs[1:]):
+        if a.get("activity") == "EXTRA" or not a.get("flight_number"):
+            continue
+        g = journey._gap(conn, a, b)
+        if not g["overnight"]:
+            continue
+        p, _s = journey.schedule_params(conn, a.get("local_date") or a["dep_utc"][:10])
+        base = p.get("base_resolved") or p.get("base")
+        if base and a["ades"] == base:
+            continue
+        out.append(a)
+    return out
+
+
+def sync(conn, core, user, *, opener=None, now: str | None = None, auto: bool | None = None) -> dict:
+    """Depois de qualquer mudança na escala: edita no Discord os avisos cujo voo mudou (horário, próxima apresentação,
+    hotel), apaga os de voos que saíram da escala e, com o envio automático ligado, manda os pernoites novos."""
+    _require(user)
+    now = now or now_iso()
+    url = get_webhook(core)
+    out = {"edited": 0, "removed": 0, "sent": 0, "errors": 0, "unchanged": 0}
+    if not (url and WEBHOOK_RE.match(url)):
+        return {**out, "note": "sem webhook"}
+    for post in rows(conn.execute("SELECT * FROM overnight_post WHERE state='ENVIADO'")):
+        leg = one(conn.execute("SELECT * FROM roster_leg WHERE uid=?", (post["leg_uid"],)))
+        if not leg or leg["removed_batch"] or leg["activity"] == "SOBREAVISO":
+            note = None
+            if post["message_id"]:
+                code, raw = _http("DELETE", f"{url}/messages/{post['message_id']}", None, opener)
+                if not (200 <= code < 300 or code == 404):
+                    note = f"não consegui apagar no Discord ({_discord_error(code, raw)})"
+            with tx(conn):
+                conn.execute("UPDATE overnight_post SET state='REMOVIDO', error=?, updated_at=? WHERE id=?",
+                             (note or "o voo saiu da escala", now, post["id"]))
+            out["removed"] += 1
+            continue
+        try:
+            body = message(describe(conn, leg, user))
+        except Exception:                                    # noqa: BLE001 — perna estranha: não derruba os outros
+            log.exception("pernoite sync: perna %s", post["leg_uid"])
+            out["errors"] += 1
+            continue
+        old = json.loads(post["payload"] or "{}")
+        if _payload_key(old) == _payload_key(body) and post["leg_id"] == leg["id"]:
+            out["unchanged"] += 1
+            continue
+        try:
+            mark(conn, core, user, leg["id"], opener=opener, now=now)
+            out["edited"] += 1
+        except FGVError:
+            out["errors"] += 1
+    if auto if auto is not None else auto_enabled(core):
+        posted = {r["leg_uid"] for r in conn.execute("SELECT leg_uid FROM overnight_post WHERE state='ENVIADO'")}
+        for leg in detected_overnights(conn, now):
+            if leg["uid"] in posted:
+                continue
+            try:
+                mark(conn, core, user, leg["id"], opener=opener, now=now)
+                out["sent"] += 1
+            except FGVError:
+                out["errors"] += 1
+    return out
+
+
+_SYNC_LOCK = threading.Lock()
+_LAST_SYNC: dict = {}
+
+
+def sync_later(core_path, career_path, user_id, *, min_interval: int = 0) -> bool:
+    """Roda o sync em segundo plano (nunca atrasa a resposta). min_interval: segundos desde o último sync desta carreira."""
+    import time
+    key = str(career_path)
+    with _SYNC_LOCK:
+        if min_interval and time.time() - _LAST_SYNC.get(key, 0) < min_interval:
+            return False
+        _LAST_SYNC[key] = time.time()
+
+    def run():
+        from .db import connect
+        from . import careers
+        try:
+            core = connect(core_path)
+            try:
+                u = one(core.execute("SELECT * FROM user WHERE id=?", (user_id,)))
+                if not u:
+                    return
+                u = dict(u)
+                code = pathlib.Path(career_path).stem.upper()
+                u["career"] = code
+                u["pilot_code"] = careers.pilot_code(u.get("pilot_code"), code)
+                cc = connect(career_path)
+                try:
+                    r = sync(cc, core, u)
+                    if r.get("edited") or r.get("removed") or r.get("sent") or r.get("errors"):
+                        log.info("pernoite sync %s: %s", code, r)
+                finally:
+                    cc.close()
+            finally:
+                core.close()
+        except Exception:                                    # noqa: BLE001
+            log.exception("pernoite sync")
+    threading.Thread(target=run, name="pernoite-sync", daemon=True).start()
+    return True
