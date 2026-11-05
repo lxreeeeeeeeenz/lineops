@@ -10,6 +10,15 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.2 beta 9
+
+* **Dia da escala: as ações ficam dentro de cada voo.** Reservar, Já fiz, Abrir o voo, Pedir troca e a caixa PERNOITE
+  (Discord) aparecem no cartão da própria perna, só as que fazem sentido naquele momento. Acabou a fileira de seis
+  botões e três caixas no fim do dia.
+* **Frota com resumo e filtros.** Em cima, quantas aeronaves estão disponíveis, com restrição e indisponíveis (clique
+  para filtrar); busca por matrícula, configuração ou posição; filtro por tipo. As que precisam de atenção vêm
+  primeiro, com o motivo embaixo da situação.
+
 ## Novidades da 3.0.2 beta 8
 
 * **Escalas reais de pilotos como referência.** Quatro escalas da LATAM e uma da Azul (setembro a novembro de 2026,
@@ -454,7 +463,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.2b8.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.2b9.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

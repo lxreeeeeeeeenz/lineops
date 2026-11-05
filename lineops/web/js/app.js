@@ -90,7 +90,7 @@ function boarding(f, opts = {}) {
   return h("article", {class: "boarding"}, head, h("div", {class: "bd-body"}, left, routeArc(f.from, f.to, f.distance_nm), right), foot);
 }
 
-function stripOf(l, side, href) {
+function stripOf(l, side, href, acts) {
   const st = l.flight_state || l.state;
   const kids = [
     h("div", {class: "no"}, l.flight_number || "—", h("small", {}, l.aircraft_type || l.type_icao || "")),
@@ -99,7 +99,8 @@ function stripOf(l, side, href) {
     h("div", {class: "side"}, side),
     h("div", {class: "ext"}, [l.registration ? h("span", {}, l.registration) : null,
       l.cruise_fl ? h("span", {}, "FL" + l.cruise_fl) : null,
-      l.route ? h("span", {title: l.route}, l.route.length > 52 ? l.route.slice(0, 52) + "…" : l.route) : null])];
+      l.route ? h("span", {title: l.route}, l.route.length > 52 ? l.route.slice(0, 52) + "…" : l.route) : null]),
+    acts && acts.length ? h("div", {class: "acts"}, acts) : null];
   const attrs = {class: "strip" + (l.removed_batch ? " gone" : ""), "data-s": st || ""};
   if (href) { attrs.href = href; return h("a", attrs, kids); }
   return h("div", attrs, kids);
@@ -114,7 +115,7 @@ function gapLine(t) {
     !t.same_airport ? chip(`próxima perna parte de ${t.to ? t.to.icao : "outro aeroporto"}`, "hold") : null);
 }
 
-function journeyRail(day) {
+function journeyRail(day, actsFor) {
   const items = [];
   const legs = day.legs.filter(l => l.is_flight);
   if (day.duty && day.duty.report_utc) {
@@ -126,7 +127,8 @@ function journeyRail(day) {
   legs.forEach((l, i) => {
     const flown = l.flight_state === "APROVADO";
     items.push(h("div", {class: "stop" + (flown ? " flown" : l.flight_id ? " on" : "")},
-      stripOf(l, [swapChip((day.swaps || {})[l.id]), l.flight_state ? stateChip(l.flight_state) : chip("Não reservado", ""), icon("seta", 16)], l.flight_id ? `#/voo/${l.flight_id}` : null)));
+      stripOf(l, [swapChip((day.swaps || {})[l.id]), l.flight_state ? stateChip(l.flight_state) : chip("Não reservado", ""), actsFor ? null : icon("seta", 16)],
+        actsFor ? null : (l.flight_id ? `#/voo/${l.flight_id}` : null), actsFor ? actsFor(l, i, legs) : null)));
     const t = day.turns[i];
     if (t) items.push(gapLine(t));
   });
@@ -812,16 +814,11 @@ function dayView(d, fleet) {
     (d.tz_unknown || []).length ? note("", "info", `Sem fuso conhecido para ${d.tz_unknown.join(", ")}: nestes aeroportos o LineOps mostra só UTC e usa UTC para datar a perna, igual ao AeroScale.`) : null,
     (d.diagnostics || []).map(x => note(x.level === "warning" ? "hold" : "", x.level === "warning" ? "alerta" : "info", h("b", {}, "AeroScale: "), x.message)),
     h("div", {class: "panel"}, h("div", {class: "panel-head"}, h("h2", {}, cap(d.label)), h("div", {class: "tools"}, chips)),
-      legs.length ? journeyRail(d) : h("div", {class: "empty"}, icon("vazio", 26), h("div", {},
+      legs.length ? journeyRail(d, l => legActions(d, l, legs, fleet)) : h("div", {class: "empty"}, icon("vazio", 26), h("div", {},
         d.kind === "FOLGA" ? "Folga programada." : d.kind === "RESERVA" ? "Dia de reserva, sem voos atribuídos."
         : d.kind === "INATIVO" ? `Dia INATIVO em ${d.inactive.at.icao}: sem voo, fora da base (descanso longo do AeroScale; não conta como folga).` : "Nenhuma perna neste dia.")),
       d.kind === "INATIVO" ? h("div", {style: "margin-top:12px"}, h("button", {class: "btn ghost sm", onclick: () => tirarInativos([d.date])},
-        icon("troca", 15), "Tirar o INATIVO (preencher com voos reais)")) : null,
-      legs.filter(l => l.can_book || l.flight_state === "RESERVADO").length ? h("div", {style: "margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"},
-        legs.filter(l => l.can_book).map(l => h("button", {class: "btn ghost sm", onclick: () => bookDialog(l, fleet)}, icon("mais", 15), `Reservar ${l.flight_number || l.adep + "→" + l.ades}`)),
-        legs.filter(l => l.can_book || l.flight_state === "RESERVADO").map(l => h("button", {class: "btn ghost sm", onclick: () => manualDialog(legTarget(l), fleet)},
-          icon("ok", 15), `Já fiz o ${l.flight_number || l.adep + "→" + l.ades}`))) : null,
-      swapRow(d, legs), overnightRow(d, legs)),
+        icon("troca", 15), "Tirar o INATIVO (preencher com voos reais)")) : null),
     swapDayPanel(d), contDayPanel(d),
     d.reserve ? h("div", {class: "panel"}, h("h2", {}, "Reserva"), h("p", {class: "muted"}, d.reserve.note || "Sem observações do AeroScale."),
       h("dl", {class: "kv"}, h("dt", {}, "Período"), h("dd", {}, `${dmy(d.reserve.from)} → ${dmy(d.reserve.to)} (${d.reserve.days} dias)`),
@@ -968,6 +965,38 @@ async function tirarInativos(dates, after) {
     f.length ? h("p", {}, h("b", {}, "Preenchidos com voos reais: "), f.join(" · ")) : null,
     l.length ? h("p", {}, h("b", {}, "Ficaram livres (nenhum par de voos reais coube nas regras de jornada): "), l.join(" · ")) : null), [closeBtn]);
   if (after) after(); else render();
+}
+/* ações de cada perna, dentro do cartão (3.0.2b9): reservar, já fiz, abrir o voo, pedir troca, pernoite no Discord */
+function legActions(d, l, legs, fleet) {
+  const out = [];
+  const name = l.flight_number || l.adep + "→" + l.ades, now = Date.now();
+  if (l.flight_id) out.push(h("a", {class: "btn ghost sm", href: `#/voo/${l.flight_id}`}, icon("seta", 14), "Abrir o voo"));
+  if (l.can_book) out.push(h("button", {class: "btn sm", onclick: () => bookDialog(l, fleet)}, icon("mais", 14), "Reservar"));
+  if (l.can_book || l.flight_state === "RESERVADO") out.push(h("button", {class: "btn ghost sm", onclick: () => manualDialog(legTarget(l), fleet)}, icon("ok", 14), "Já fiz"));
+  const sw = (d.swaps || {})[l.id];
+  if (!SWAP_DONE.includes(l.flight_state) && Date.parse(l.dep_utc) > now && !(sw && sw.state === "PENDENTE"))
+    out.push(h("button", {class: "btn ghost sm", onclick: () => swapDialog(l)}, icon("troca", 14), "Pedir troca"));
+  const ov = overnightToggle(d, l, legs);
+  if (ov) out.push(ov);
+  return out;
+}
+function overnightToggle(d, l, legs) {
+  if (!(me && me.features && me.features.pernoite_discord) || l.is_flight === false || l.activity === "SOBREAVISO") return null;
+  const fl = legs.filter(x => x.is_flight !== false && x.activity !== "SOBREAVISO"), lastId = fl.length ? fl[fl.length - 1].id : null;
+  const posts = d.overnight_posts || {}, st = posts[String(l.id)], cb = h("input", {type: "checkbox", checked: !!st && st.state === "ENVIADO"});
+  const det = d.overnight && (d.overnight.kind === "marcado" ? d.overnight.detected : d.overnight);
+  const auto = det && l.id === lastId;
+  cb.addEventListener("change", async () => {
+    cb.disabled = true;
+    const r = await act(() => post(`/api/pernoite/${l.id}/${cb.checked ? "marcar" : "desmarcar"}`), cb.checked ? "Pernoite enviado para o Discord" : "Pernoite desmarcado");
+    if (!r) cb.checked = !cb.checked;
+    else if (r.note) toast(r.note, true);
+    else if (cb.checked && !r.detected) toast("Enviado. Pela escala, esse voo não termina em pernoite: o pernoite do dia passa a ser no destino dele.");
+    cb.disabled = false;
+    if (r) render();
+  });
+  return h("label", {class: "ck pernoite-ck" + (auto ? " auto" : ""), title: st && st.state === "ERRO" ? `Último envio falhou: ${st.error}` : (auto ? "Pela escala, este voo termina em pernoite" : "Marca este voo como pernoite e avisa no Discord")},
+    cb, h("b", {}, "PERNOITE"), auto ? h("span", {class: "muted"}, " · na escala") : null, st && st.state === "ERRO" ? h("span", {class: "muted"}, " · falhou") : null);
 }
 /* aviso de pernoite no Discord (só para o usuário cmdt079) */
 function overnightRow(d, legs) {
@@ -1424,19 +1453,44 @@ function unplannedDialog(fleet) {
 view("frota", async (main, arg) => {
   if (arg) return aircraftDetail(main, +arg);
   const list = await get("/api/aircraft?all=true");
+  // resumo e filtros (3.0.2b9): o que precisa de atenção vem primeiro
+  const st = a => !a.active ? "INATIVA" : a.availability.status;
+  const cnt = {total: list.length, ok: 0, restr: 0, down: 0, off: 0};
+  list.forEach(a => { const x = st(a); if (x === "DISPONIVEL") cnt.ok++; else if (x === "COM_RESTRICAO") cnt.restr++; else if (x === "INDISPONIVEL") cnt.down++; else cnt.off++; });
+  const types = [...new Set(list.map(a => a.type_icao))].sort();
+  let F = {q: "", type: "", st: ""};
+  try { F = {...F, ...JSON.parse(sessionStorage.getItem("lineops.frota.filtro") || "{}")}; } catch (e) { /* sem filtro */ }
+  const q = h("input", {placeholder: "matrícula ou configuração", value: F.q}), ty = h("select", {}, h("option", {value: ""}, "Todos os tipos"), types.map(t => h("option", {value: t, selected: t === F.type}, t)));
+  const order = {INDISPONIVEL: 0, COM_RESTRICAO: 1, DISPONIVEL: 2, INATIVA: 3};
+  const body = h("div", {});
+  const tile = (n, l, k) => h("button", {class: "fig fig-btn" + (F.st === k ? " on" : ""), onclick: () => { F.st = F.st === k ? "" : k; paint(); }}, h("b", {}, String(n)), h("span", {}, l));
+  const tiles = h("div", {class: "figs"});
+  const paint = () => {
+    try { sessionStorage.setItem("lineops.frota.filtro", JSON.stringify(F)); } catch (e) { /* sem sessão */ }
+    put(tiles, tile(cnt.total, "aeronaves", ""), tile(cnt.ok, "disponíveis", "DISPONIVEL"), tile(cnt.restr, "com restrição", "COM_RESTRICAO"), tile(cnt.down, "indisponíveis", "INDISPONIVEL"), cnt.off ? tile(cnt.off, "desativadas", "INATIVA") : null);
+    const qq = F.q.trim().toUpperCase();
+    const rows = list.filter(a => (!F.type || a.type_icao === F.type) && (!F.st || st(a) === F.st)
+      && (!qq || a.registration.includes(qq) || (cfgShort(a) || "").toUpperCase().includes(qq) || (a.location && a.location.icao.includes(qq))))
+      .sort((a, b) => (order[st(a)] - order[st(b)]) || a.registration.localeCompare(b.registration));
+    put(body, rows.length ? h("div", {class: "tbl"}, h("table", {},
+      h("thead", {}, h("tr", {}, ["Matrícula", "Tipo", "Configuração", "Situação", "Posição", "Horas", "Ciclos"].map((t, k) => h("th", {class: k > 4 ? "n" : ""}, t)))),
+      h("tbody", {}, rows.map(a => h("tr", {class: "click", tabindex: 0, onclick: () => location.hash = "#/frota/" + a.id,
+        onkeydown: e => e.key === "Enter" && (location.hash = "#/frota/" + a.id)},
+        h("td", {}, h("b", {}, a.registration)), h("td", {class: "t"}, a.type_icao), h("td", {class: "muted", style: "font-size:13px"}, cfgShort(a) || "—"),
+        h("td", {}, availChip(a), st(a) !== "DISPONIVEL" && a.active ? h("div", {class: "fine", style: "margin-top:3px;max-width:34ch"}, [...a.availability.blocking, ...a.availability.restrictions.map(r => r.title)].join("; ")) : null),
+        h("td", {class: "t"}, a.location ? a.location.icao : "—"),
+        h("td", {class: "n"}, a.totals.total_hours == null ? hm(a.totals.flown_air_min) : a.totals.total_hours.toFixed(1)),
+        h("td", {class: "n"}, a.totals.total_cycles == null ? a.totals.flown_cycles : a.totals.total_cycles))))))
+      : h("p", {class: "muted"}, "Nenhuma aeronave com esse filtro."));
+  };
+  q.addEventListener("input", () => { F.q = q.value; paint(); }); ty.addEventListener("change", () => { F.type = ty.value; paint(); });
   put(main, h("div", {class: "head"}, h("div", {}, h("h1", {}, "Frota"), h("div", {class: "sub"}, "Por matrícula. A disponibilidade é calculada, nunca digitada.")),
       h("div", {class: "tools"}, h("button", {class: "btn ghost", onclick: csvDialog}, icon("importar", 16), "Importar CSV"),
         h("button", {class: "btn", onclick: addAircraftDialog}, icon("mais", 16), "Nova aeronave"))),
-    list.length ? h("div", {class: "panel"}, h("div", {class: "tbl"}, h("table", {},
-      h("thead", {}, h("tr", {}, ["Matrícula", "Tipo", "Configuração", "Situação", "Posição", "Horas", "Ciclos"].map((t, k) => h("th", {class: k > 4 ? "n" : ""}, t)))),
-      h("tbody", {}, list.map(a => h("tr", {class: "click", tabindex: 0, onclick: () => location.hash = "#/frota/" + a.id,
-        onkeydown: e => e.key === "Enter" && (location.hash = "#/frota/" + a.id)},
-        h("td", {}, h("b", {}, a.registration)), h("td", {class: "t"}, a.type_icao), h("td", {class: "muted", style: "font-size:13px"}, cfgShort(a) || "—"), h("td", {}, availChip(a)),
-        h("td", {class: "t"}, a.location ? a.location.icao : "—"),
-        h("td", {class: "n"}, a.totals.total_hours == null ? hm(a.totals.flown_air_min) : a.totals.total_hours.toFixed(1)),
-        h("td", {class: "n"}, a.totals.total_cycles == null ? a.totals.flown_cycles : a.totals.total_cycles)))))))
+    list.length ? h("div", {class: "panel"}, tiles, h("div", {class: "row", style: "margin:14px 0 4px"}, field("Buscar", q), field("Tipo", ty)), body)
       : h("div", {class: "empty"}, icon("frota", 26),
         h("p", {style: "margin:0 auto;max-width:46ch"}, "Sua frota está vazia e o AeroScale não informa matrículas. Cadastre as aeronaves que você usa; limites de peso e horas ficam em branco até você informá-los.")));
+  if (list.length) paint();
 });
 function availChip(a) {
   const s = a.availability.status;
@@ -3603,7 +3657,11 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.2b8": [
+const NEWS = {"3.0.2b9": [
+  ["Dia da escala: ações dentro de cada voo", "Reservar, Já fiz, Abrir o voo, Pedir troca e a caixa PERNOITE ficam no cartão da própria perna. Acabou a fileira de botões no fim do dia."],
+  ["Frota com resumo e filtros", "Quantas disponíveis, com restrição e indisponíveis (clique para filtrar), busca por matrícula ou configuração, filtro por tipo. As que precisam de atenção vêm primeiro, com o motivo embaixo da situação."],
+  ["Gerar escala mais simples", "Só o essencial à vista; o resto em “Opções avançadas”. Pernoites no Discord seguem a escala. Escalas reais de pilotos como referência."]],
+  "3.0.2b8": [
   ["Escalas reais de pilotos", "4 escalas de LATAM e 1 da Azul (set–nov/2026) viraram referência: o perfil de realismo foi recalibrado e as continuações do avião vistas nelas (ex.: TAM3376 → TAM3371 Petrolina na quarta) entram com confiança alta, por cima da estimativa do RPL."],
   ["Importar escala real", "Aceita números separados por espaço (8045 3699 3252) e blocos separados por barra (REC-CNF(4605)/CNF-PMW-CNF (4408,4409) +1). O que você importar também vira evidência de continuação."]],
   "3.0.2b7": [
