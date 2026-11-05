@@ -979,15 +979,18 @@ function moreFlightsDialog(day0) {
     rows.push(r); list.appendChild(el);
   };
   addRow(day0, 3);
+  const apIn = h("input", {placeholder: "vazio = onde a escala deixou (ex.: GRU, SBRF)", style: "text-transform:uppercase", maxlength: 4});
   dialog("Mais voos", "Regera a escala a partir do primeiro dia escolhido, com os mesmos parâmetros da escala atual (folgas pedidas, pernoites, continuações). O que vem antes não muda; a parte nova continua de onde o avião estava.",
     h("div", {}, list, h("button", {class: "btn ghost sm", type: "button", onclick: () => addRow("", 3)}, icon("mais", 14), "Outro dia"),
+      h("div", {class: "subpanel", style: "margin-top:12px"}, field("Aeronave está em (só no primeiro dia)", apIn),
+        h("p", {class: "fine", style: "margin:0"}, "A chave do primeiro dia escolhido começa nesse aeroporto. Os dias seguintes seguem a escala nova. Jornada e repouso dos dias anteriores continuam contando.")),
       h("p", {class: "fine"}, "Só voos reais do RPL, dentro das regras de jornada e repouso. Folga regulamentar no dia escolhido troca de dia; reserva não. Se a quantidade não couber, a escala sai assim mesmo e o diagnóstico do dia diz por quê.")),
     [closeBtn, {label: "Regerar", fn: async () => {
       const mins = {};
       rows.forEach(r => { if (r.di.value) mins[r.di.value] = +r.ni.value; });
       const ds = Object.keys(mins).sort();
       if (!ds.length) { toast("Escolha pelo menos um dia.", true); return false; }
-      const j = await act(() => post("/api/motor/mais-voos", {day: ds[0], mins}));
+      const j = await act(() => post("/api/motor/mais-voos", {day: ds[0], mins, start_airport: apIn.value.trim().toUpperCase() || null}));
       if (!j) return false;
       toast("Regerando a partir de " + dm(ds[0]) + "…");
       const t = setInterval(async () => {
@@ -996,7 +999,7 @@ function moreFlightsDialog(day0) {
         if (s.state === "running") return;
         clearInterval(t);
         if (s.state !== "finished") { toast(s.error || "Não deu para regerar.", true); return; }
-        const notes = (s.result.diagnostics || []).filter(x => (x.code || "").startsWith("minimo_pernas"));
+        const notes = (s.result.diagnostics || []).filter(x => (x.code || "").startsWith("minimo_pernas") || (x.code === "posicao" && x.message.includes("você disse")));
         notes.forEach(x => toast(x.message, x.level === "warning"));
         roster.date = ds[0]; render();
       }, 600);
@@ -3705,7 +3708,9 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.3": [
+const NEWS = {"3.0.4": [
+  ["Aeronave está em…", "Em Mais voos: diga em que aeroporto a aeronave está (ICAO ou IATA) e a chave do primeiro dia começa ali. Só esse dia; os seguintes seguem a escala nova, com jornada e repouso dos dias anteriores contando."]],
+  "3.0.3": [
   ["Mais voos a partir de um dia", "Na Escala, ao lado de Texto: escolha um ou mais dias e o mínimo de pernas em cada um. A escala é regerada a partir do primeiro dia, com os mesmos parâmetros (folgas pedidas, pernoites, continuações), e encaixa no que vem antes, que não muda."],
   ["Mínimo de pernas no gerador", "Em Gerar escala › Seu pedido: o dia vira dia de voo, com pelo menos a quantidade escolhida de pernas reais. O diagnóstico diz, dia a dia, se encaixou."],
   ["Pernoite pedido mais certeiro", "A conferência do pernoite pedido usava a hora UTC em vez da local: em voo que chega depois das 21h, podia dar o pedido como atendido (ou não) errado. Corrigido."]],

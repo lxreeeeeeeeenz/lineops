@@ -196,7 +196,9 @@ ALLOWED = {"kind", "month", "start_date", "end_date", "base", "icao_type", "mode
            # LineOps: folgas automáticas (regras), nenhuma folga, ou só as escolhidas a dedo
            "days_off_mode",
            # LineOps 3.0.2 (beta): seguir continuações (regras / regras + identificadas / não)
-           "follow_mode", "follow_strength", "day_legs_min"}
+           "follow_mode", "follow_strength", "day_legs_min",
+           # LineOps 3.0.4: "a aeronave está em X": a chave do primeiro dia começa nesse aeroporto
+           "start_airport"}
 DAYS_OFF_MODES = ("auto", "none", "manual")
 
 
@@ -226,7 +228,8 @@ def clean_params(airline: str, raw: dict) -> dict:
     return p
 
 
-def more_flights(data_dir, airline: str, career_path: Path, day: str, mins: dict, user_id=None, share_stats: bool = False) -> dict:
+def more_flights(data_dir, airline: str, career_path: Path, day: str, mins: dict, user_id=None, share_stats: bool = False,
+                 start_airport: str | None = None) -> dict:
     """Regerar a escala a partir de um dia, com os mesmos parâmetros da escala que hoje é dona desse dia, pedindo um
     mínimo de pernas em dias escolhidos ({"AAAA-MM-DD": n}). O que vem antes do dia não muda; a nova parte continua de
     onde o avião estava (mesmo encaixe do "gerar a partir do dia"). Folgas pedidas, pernoites pedidos e a força das
@@ -248,7 +251,7 @@ def more_flights(data_dir, airline: str, career_path: Path, day: str, mins: dict
         raise FGVError(f"Não há escala gerada que cubra {day[8:10]}/{day[5:7]}: gere a escala do período antes.", code="sem_escala", status=409)
     if p.get("imported"):
         raise FGVError("Esta parte da escala é uma escala real importada: o motor não a regera.", code="escala_importada", status=409)
-    skip = {"name", "start_day", "replace_from_day", "from_position", "day_legs_min", "overnights", "follow_mode", "month"}
+    skip = {"name", "start_day", "replace_from_day", "from_position", "day_legs_min", "overnights", "follow_mode", "month", "start_airport"}
     body = {k: v for k, v in p.items() if k in ALLOWED and k not in skip and v not in (None, "")}
     body["kind"], body["start_date"], body["end_date"] = "avulsa", sched["start_date"], sched["end_date"]
     ov = [{"date": r.get("night") or r.get("date"), "airport": r.get("icao") or r.get("airport")} for r in (p.get("overnights") or [])
@@ -257,6 +260,8 @@ def more_flights(data_dir, airline: str, career_path: Path, day: str, mins: dict
         body["overnights"] = ov
     body["requested_off"] = [x for x in (p.get("requested_off") or []) if x >= day]
     body.update({"start_day": day, "replace_from_day": True, "day_legs_min": {k: v for k, v in mins.items() if v}})
+    if start_airport:
+        body["start_airport"] = start_airport
     if not body["day_legs_min"]:
         body.pop("day_legs_min")
     return generate(data_dir, airline, body, career_path, user_id=user_id, share_stats=share_stats)
@@ -318,6 +323,9 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None,
     start_pos = None
     from_pos = p.pop("from_position", None)
     start_day = p.pop("start_day", None)
+    start_ap = (p.pop("start_airport", None) or "").strip().upper() or None
+    if start_ap and not start_day:
+        raise FGVError("“A aeronave está em…” vale com um dia de início (gerar a partir do dia ou Mais voos).", code="campo_invalido")
     replace = p.pop("replace_from_day", True) is not False
     cut_day = cut_until = None
     if from_pos and not start_day:
@@ -328,6 +336,8 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None,
         rp = scheduler.resolve_params(c, dict(p))     # valida já (erro de período aparece na hora, não depois)
         if start_day:
             cut_day, cut_until, start_pos = _from_day(p, rp, str(start_day)[:10], career_path, replace, from_pos)
+            if start_ap:
+                start_pos = _override_start(career_path, start_pos, start_ap, str(start_day)[:10])
         elif start_pos:
             _clip_to_position(p, rp, start_pos)
         fm = p.pop("follow_mode", None)                   # formato da 3.0.2 beta 1 (regras/beta/off)
@@ -527,6 +537,25 @@ def _start_position(career_path: Path) -> dict:
         cc.close()
 
 
+def _override_start(career_path: Path, pos: dict | None, code: str, day: str) -> dict:
+    """“A aeronave está em X”: a chave do dia começa em X (ICAO ou IATA). Jornada e repouso dos dias anteriores continuam
+    contando; só o aeroporto de partida muda, e só no primeiro dia (os seguintes seguem a escala nova)."""
+    from . import journey, troca
+    from .db import connect as lconnect
+    cc = lconnect(career_path)
+    try:
+        icao = troca.resolve_airport(cc, code)
+        if not icao:
+            raise FGVError(f"Aeroporto não reconhecido: {code}.", code="aeroporto_invalido")
+        place = journey.place(cc, icao)
+    finally:
+        cc.close()
+    base = dict(pos or {"at_utc": f"{(date.fromisoformat(day) - timedelta(days=1)).isoformat()}T12:00:00Z", "history": []})
+    base.update({"icao": icao, "place": place, "flight_number": None, "at_local": None, "source": "informado",
+                 "was": (pos or {}).get("icao")})
+    return base
+
+
 def _from_day(p: dict, rp: dict, day: str, career_path: Path, replace: bool, from_pos) -> tuple[str | None, dict | None]:
     """Gerar a partir do dia escolhido (o mensal sempre começaria no dia 1): o período vai do dia até o fim do que foi escolhido.
     Se já há escala desse dia em diante, ela é substituída (com replace) e a nova continua de onde o avião estava antes."""
@@ -617,9 +646,14 @@ def generate_from(db, raw_params: dict, pos: dict, progress=None) -> int:
     t_day = _dt.combine(pl.start, _time(0, 0), tz).astimezone(_tz.utc)
     t_arr = _dt.strptime(pos["at_utc"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_tz.utc)
     legs = pl.plan(pos["icao"], max(t_day, t_arr), pl.start, pl.end, base, had_legs=bool(hist))
-    pl.diag("info", "posicao", f"Começa em {pos['icao']}, onde o seu avião parou"
-            + (f" (fim do {pos['flight_number']}" + (f", {pos['at_local']} local" if pos.get("at_local") else "") + ")" if pos.get("flight_number") else "")
-            + f", com a base em {base}. Jornada e repouso dos dias anteriores contam.")
+    if pos.get("source") == "informado":
+        pl.diag("info", "posicao", f"Começa em {pos['icao']}, onde você disse que a aeronave está"
+                + (f" (a escala anterior terminava em {pos['was']})" if pos.get("was") and pos["was"] != pos["icao"] else "")
+                + f", com a base em {base}. Jornada e repouso dos dias anteriores contam.")
+    else:
+        pl.diag("info", "posicao", f"Começa em {pos['icao']}, onde o seu avião parou"
+                + (f" (fim do {pos['flight_number']}" + (f", {pos['at_local']} local" if pos.get("at_local") else "") + ")" if pos.get("flight_number") else "")
+                + f", com a base em {base}. Jornada e repouso dos dias anteriores contam.")
     cf, ct = pl.idx.coverage()
     if any(o["origin"] == "PROJETADO" for o in legs):
         n_proj = sum(1 for o in legs if o["origin"] == "PROJETADO")

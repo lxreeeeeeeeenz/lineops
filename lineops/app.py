@@ -820,7 +820,7 @@ def create_app(data_dir: str | Path) -> FastAPI:
         if not isinstance(mins, dict):
             raise FGVError("mins: {dia: pernas}.", code="campo_invalido")
         return motor.more_flights(data_dir, u["career"], careers.career_path(data_dir, u["career"]), str(b.get("day") or ""), mins,
-                                  user_id=u["id"], share_stats=estatisticas.share_enabled(core))
+                                  user_id=u["id"], share_stats=estatisticas.share_enabled(core), start_airport=b.get("start_airport") or None)
 
     # ----------------------------------------------------------------- continuações (beta)
     @app.get("/api/continuacoes")

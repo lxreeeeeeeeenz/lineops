@@ -39,3 +39,24 @@ def test_more_flights_from_a_day(eng):  # noqa: F811
         motor.more_flights(data, "GLO", career, "2027-05-01", {"2027-05-01": 3})  # sem escala nesse dia
     with pytest.raises(FGVError):
         _run(data, career, {**BASE, "seed": 3, "day_legs_min": {"2026-11-12": 9}})
+
+
+def test_start_airport_only_moves_the_first_day(eng):  # noqa: F811
+    data, career = eng
+    _run(data, career, {**BASE, "seed": 3})
+    c = db.connect(career)
+    day = next(l["local_date"] for l in escala.legs(c, "2026-11-12", "2026-11-30", flights_only=True))
+    c.close()
+    j = motor.more_flights(data, "GLO", career, day, {}, start_airport="REC")
+    import time
+    while motor.job(j["id"])["state"] == "running":
+        time.sleep(0.2)
+    r = motor.job(j["id"])
+    assert r["state"] == "finished", r.get("error")
+    assert any("onde você disse que a aeronave está" in d["message"] for d in r["result"]["diagnostics"])
+    c = db.connect(career)
+    first = escala.legs(c, day, "2026-11-30", flights_only=True)[0]
+    assert first["adep"] == "SBRF"
+    c.close()
+    with pytest.raises(FGVError):
+        _run(data, career, {**BASE, "seed": 3, "start_airport": "REC", "start_day": None})

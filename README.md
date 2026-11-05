@@ -10,6 +10,13 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.4
+
+* **"Aeronave está em…" no Mais voos.** Informe o aeroporto (ICAO ou IATA) e a chave do primeiro dia escolhido começa
+  ali, em vez de onde a escala anterior deixou. Vale só para esse dia: os seguintes seguem a escala nova. Jornada e
+  repouso dos dias anteriores continuam contando, e o diagnóstico registra a troca ("começa em SBRF, onde você disse que
+  a aeronave está; a escala anterior terminava em SBGR").
+
 ## Novidades da 3.0.3
 
 * **Mais voos a partir de um dia.** Na Escala, ao lado de "Texto", o botão "Mais voos": escolha um ou mais dias e o
@@ -476,7 +483,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.3.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.4.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não
