@@ -34,6 +34,39 @@ CABIN_NAMES = ("Aline Costa", "Bruno Lacerda", "Carolina Mendes", "Daniel Ayres"
                "Henrique Lobo", "Ingrid Paiva", "Jéssica Amaral", "Kleber Souza", "Letícia Morais", "Mateus Cardoso", "Priscila Gomes",
                "Rafaela Duarte", "Sabrina Leal", "Tiago Holanda", "Vanessa Brito", "Wagner Pires", "Yasmin Serra", "Otávio Rangel",
                "Luana Barreto", "César Fontes", "Débora Matos")
+# 3.0.1: muito mais gente. Além das listas acima, combinações de prenomes e sobrenomes comuns no Brasil (todas fictícias;
+# qualquer semelhança é coincidência). Ordem fixa (semente fixa): a mesma escala sorteia as mesmas pessoas.
+_FIRST_F = ("Ana", "Amanda", "Bianca", "Bruna", "Carla", "Cecília", "Clara", "Daniela", "Eduarda", "Fernanda", "Flávia", "Giovana",
+            "Helena", "Isadora", "Joana", "Júlia", "Karina", "Laura", "Lívia", "Lorena", "Luíza", "Manuela", "Marina", "Melissa",
+            "Mirela", "Nicole", "Olívia", "Paula", "Raquel", "Rebeca", "Sara", "Sofia", "Talita", "Valentina", "Vitória", "Yara",
+            "Alícia", "Beatriz", "Débora", "Estela", "Gisele", "Heloísa", "Irene", "Jaqueline", "Lara", "Maitê", "Noemi", "Patrícia")
+_FIRST_M = ("Arthur", "Bernardo", "Caio", "Cauã", "Davi", "Enzo", "Fernando", "Gabriel", "Guilherme", "Heitor", "Igor", "João",
+            "Leonardo", "Lorenzo", "Marcelo", "Miguel", "Murilo", "Nicolas", "Otávio", "Pedro", "Rafael", "Ricardo", "Samuel", "Sérgio",
+            "Vitor", "William", "Alexandre", "Augusto", "Benício", "Cristiano", "Douglas", "Emanuel", "Fabrício", "Gilberto", "Hugo",
+            "Ivan", "Jorge", "Leandro", "Márcio", "Nelson", "Paulo", "Renan", "Saulo", "Teodoro", "Ulisses", "Wesley")
+_SURN = ("Almeida", "Andrade", "Araújo", "Azevedo", "Barbosa", "Batista", "Bezerra", "Braga", "Cabral", "Caldeira", "Carvalho",
+         "Castro", "Cavalcanti", "Coelho", "Correia", "Cunha", "Dias", "Esteves", "Farias", "Fernandes", "Figueiredo", "Fonseca",
+         "Gonçalves", "Guimarães", "Ibrahim", "Lima", "Lopes", "Macedo", "Machado", "Magalhães", "Marques", "Medeiros", "Melo",
+         "Miranda", "Monteiro", "Nascimento", "Neves", "Nogueira", "Oliveira", "Pacheco", "Peixoto", "Pereira", "Pinheiro", "Ramos",
+         "Reis", "Ribeiro", "Rios", "Sampaio", "Santana", "Santos", "Siqueira", "Silveira", "Soares", "Tavares", "Teixeira",
+         "Valente", "Vieira", "Xavier", "Yamamoto", "Zanetti", "Kowalski", "Okada", "Bittencourt", "Brandão", "Damasceno",
+         "Espíndola", "Frota", "Galvão", "Hoffmann", "Jardim", "Leite", "Mourão", "Novaes", "Portela", "Quintela", "Sobral")
+
+
+def _combos(seed: int, n: int, exclude: tuple) -> tuple:
+    rnd = random.Random(seed)
+    first = list(_FIRST_F + _FIRST_M)
+    out, seen = [], set(exclude)
+    while len(out) < n:
+        nm = f"{rnd.choice(first)} {rnd.choice(_SURN)}"
+        if nm not in seen:
+            seen.add(nm)
+            out.append(nm)
+    return tuple(out)
+
+
+FO_NAMES = FO_NAMES + _combos(79, 300, FO_NAMES + CABIN_NAMES)
+CABIN_NAMES = CABIN_NAMES + _combos(121, 700, FO_NAMES + CABIN_NAMES)
 SEATS = {"B738": 186, "B38M": 186, "B737": 138, "B37M": 138, "B739": 189, "B39M": 189}       # GOL
 SEATS_BY_AIRLINE = {
     "GLO": SEATS,

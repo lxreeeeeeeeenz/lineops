@@ -482,11 +482,11 @@ def test_roster_text_over_http(cl):
     assert f.status_code == 200 and f.headers["content-type"].startswith("text/plain") and "attachment" in f.headers["content-disposition"]
 
 
-def test_overnight_discord_is_only_for_cmdt079(cl):
-    setup_user(cl)                                                                   # "piloto": sem o recurso
-    assert cl.get("/api/me").json()["features"]["pernoite_discord"] is False
-    assert cl.get("/api/pernoite/discord").status_code == 403
-    assert cl.post("/api/pernoite/1/marcar", headers=H).status_code == 403
+def test_overnight_discord_is_for_everyone(cl):
+    setup_user(cl)                                                                   # 3.0.1: "piloto" também tem o recurso
+    assert cl.get("/api/me").json()["features"]["pernoite_discord"] is True
+    assert cl.get("/api/pernoite/discord").json()["configured"]
+    assert cl.post("/api/pernoite/999999/marcar", headers=H).status_code == 404
 
 
 def test_overnight_discord_for_cmdt079(cl):
@@ -554,3 +554,12 @@ def test_v3_endpoints_over_http(cl):
     assert cl.put("/api/me", headers=H, json={"display_name": "Cmte. Triple"}).json()["display_name"] == "Cmte. Triple"
     assert cl.get("/api/me").json()["display_name"] == "Cmte. Triple"
     assert cl.put("/api/me", headers=H, json={"display_name": ""}).status_code == 400
+
+
+def test_statistics_over_http(cl):
+    setup_user(cl)
+    d = cl.get("/api/estatisticas?inicio=2026-11-01&fim=2026-11-30").json()
+    assert d["roster"]["legs"] == 0 and len(d["roster"]["by_hour"]) == 24
+    s = cl.get("/api/estatisticas/envio").json()
+    assert s["enabled"] is True and len(s["install"]) == 12
+    assert cl.put("/api/estatisticas/envio", headers=H, json={"enabled": False}).json()["enabled"] is False

@@ -224,7 +224,7 @@ def clean_params(airline: str, raw: dict) -> dict:
     return p
 
 
-def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None) -> dict:
+def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None, share_stats: bool = False) -> dict:
     """Começa a geração em segundo plano. Devolve o estado da tarefa (a tela acompanha o progresso)."""
     from . import careers
     p = clean_params(airline, raw)
@@ -306,9 +306,13 @@ def generate(data_dir, airline: str, raw: dict, career_path: Path, user_id=None)
         diags = (s.get("diagnostics") or [])[:12]
         if start_day and link:
             diags = [link] + diags
-        return {"schedule_id": sid, "name": s.get("name"), "start_date": s.get("start_date"), "end_date": s.get("end_date"),
-                "legs": len(s.get("legs") or []), "diagnostics": diags,
-                "import": {k: st.get(k) for k in ("legs_new", "legs_changed", "legs_removed", "legs_unchanged", "legs_total", "warnings")}}
+        out = {"schedule_id": sid, "name": s.get("name"), "start_date": s.get("start_date"), "end_date": s.get("end_date"),
+               "legs": len(s.get("legs") or []), "diagnostics": diags,
+               "import": {k: st.get(k) for k in ("legs_new", "legs_changed", "legs_removed", "legs_unchanged", "legs_total", "warnings")}}
+        if out["legs"] and share_stats:
+            from . import careers, estatisticas
+            estatisticas.send_generated(careers.core_path(Path(data_dir)), career_path, airline, out, p)   # em segundo plano
+        return out
     return jobs.start(str(dbp), f"Escala {airline}", run)
 
 

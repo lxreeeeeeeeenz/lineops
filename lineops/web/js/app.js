@@ -142,7 +142,7 @@ function journeyRail(day) {
 
 /* ───────────────────────── navegação ───────────────────────── */
 const VIEWS = {};
-const NAV = [["painel", "Painel"], ["mensagens", "Mensagens"], ["escala", "Escala"], ["voos", "Voos"], ["rede", "Rede"], ["frota", "Frota"], ["pireps", "PIREPs"], ["diario", "Diário"], ["carreira", "Carreira"], ["externos", "Voos Externos"], ["salarios", "Salários"], ["ajustes", "Ajustes"]];
+const NAV = [["painel", "Painel"], ["mensagens", "Mensagens"], ["escala", "Escala"], ["voos", "Voos"], ["rede", "Rede"], ["frota", "Frota"], ["pireps", "PIREPs"], ["diario", "Diário"], ["carreira", "Carreira"], ["estatisticas", "Estatísticas"], ["externos", "Voos Externos"], ["salarios", "Salários"], ["ajustes", "Ajustes"]];
 let me = null, pending = 0, booted = false;
 const view = (name, fn) => VIEWS[name] = fn;
 
@@ -176,7 +176,8 @@ async function render() {
   if (name === "modo") return modeScreen();
   const fn = VIEWS[name] || VIEWS.painel;
   const main = h("main", {}, skeleton("s", "h"));
-  const paint = () => document.getElementById("app").replaceChildren(h("div", {class: "shell"}, shell(VIEWS[name] ? name : "painel"), main));
+  const paint = () => document.getElementById("app").replaceChildren(h("div", {class: "shell"}, shell(VIEWS[name] ? name : "painel"),
+    h("div", {class: "stage"}, hudStrip(), main)));
   if (booted) await transition(paint); else paint();
   booted = true;
   try {
@@ -190,6 +191,97 @@ async function render() {
 }
 let lastHash = "";
 addEventListener("hashchange", render);
+
+/* ───────────────────────── estatísticas ───────────────────────── */
+const stats = {src: "roster", period: "mes"};
+view("estatisticas", async main => {
+  const ym = today().slice(0, 7), [y, m] = ym.split("-").map(Number), last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const q = stats.period === "mes" ? `?inicio=${ym}-01&fim=${last}` : "";
+  const d = await get("/api/estatisticas" + q);
+  const s = stats.src === "roster" ? d.roster : d.flown;
+  const seg = (opts, cur, set) => h("div", {class: "seg"}, opts.map(([v, l]) => h("button", {"aria-pressed": cur === v, onclick: () => { set(v); render(); }}, l)));
+  const apName = a => a.iata ? `${a.iata}` : a.icao;
+  const bars = (list, label) => {
+    const max = Math.max(1, ...list.map(x => x.n));
+    return list.length ? h("div", {class: "rank"}, list.map((x, k) => h("div", {class: "rank-row"},
+      h("span", {class: "rank-k"}, String(k + 1)), h("span", {class: "rank-name"}, label(x)),
+      h("span", {class: "rank-bar"}, h("i", {style: `width:${Math.round(100 * x.n / max)}%`})), h("b", {class: "rank-n"}, x.n))))
+      : h("p", {class: "muted"}, "Nada no período.");
+  };
+  const hourMax = Math.max(1, ...s.by_hour);
+  const fig = (v, l) => h("div", {class: "fig"}, h("b", {}, v), h("span", {}, l));
+  put(main, h("div", {class: "head"}, h("div", {}, h("h1", {}, "Estatísticas"),
+      h("div", {class: "sub"}, `${dmy(d.period.start)} a ${dmy(d.period.end)} · ${stats.src === "roster" ? "o que a escala programou" : "o que você voou (diário)"}`)),
+      h("div", {class: "tools"}, seg([["mes", "Este mês"], ["tudo", "Tudo"]], stats.period, v => stats.period = v),
+        seg([["roster", "Escala"], ["flown", "Diário"]], stats.src, v => stats.src = v))),
+    h("div", {class: "figs"}, fig(s.legs, "pernas"), fig(`${Math.floor(s.block_min / 60)}h${String(s.block_min % 60).padStart(2, "0")}`, "de bloco"),
+      fig(s.flight_days, "dias de voo"), fig(s.airports, "aeroportos"), fig(s.legs_per_day == null ? "—" : s.legs_per_day.toLocaleString("pt-BR"), "pernas por dia"),
+      stats.src === "roster" && s.projected_pct != null ? fig(`${s.projected_pct}%`, "projetado do RPL") : fig(s.intl, "internacionais")),
+    h("div", {class: "cols-2", style: "margin-top:18px"},
+      h("div", {class: "panel"}, h("h2", {}, "Aeroportos mais usados"), h("p", {class: "fine", style: "margin-top:2px"}, "Pousos e decolagens somados."),
+        bars(s.top_airports, x => h("span", {}, h("b", {}, apName(x)), " ", h("span", {class: "muted"}, x.city))),
+        h("div", {class: "cols", style: "margin-top:14px;gap:12px"},
+          h("div", {}, h("h3", {}, "Mais partidas"), bars(s.top_departures, x => h("b", {}, apName(x)))),
+          h("div", {}, h("h3", {}, "Mais chegadas"), bars(s.top_arrivals, x => h("b", {}, apName(x)))))),
+      h("div", {},
+        h("div", {class: "panel"}, h("h2", {}, "Rotas"), bars(s.top_routes, x => h("b", {}, `${apName(x.a)} ⇄ ${apName(x.b)}`))),
+        stats.src === "roster" ? h("div", {class: "panel", style: "margin-top:18px"}, h("h2", {}, "Onde você mais pernoita"),
+          bars(d.overnights, x => h("span", {}, h("b", {}, apName(x)), " ", h("span", {class: "muted"}, x.city)))) : null)),
+    h("div", {class: "cols-2", style: "margin-top:18px"},
+      h("div", {class: "panel"}, h("h2", {}, "Partidas por hora (local)"),
+        h("div", {class: "hours"}, s.by_hour.map((n, k) => h("div", {class: "hr-col", title: `${String(k).padStart(2, "0")}h: ${n}`},
+          h("i", {style: `height:${Math.round(100 * n / hourMax)}%`}), h("span", {}, k % 3 === 0 ? String(k).padStart(2, "0") : ""))))),
+      h("div", {class: "panel"}, h("h2", {}, "Destaques"), h("dl", {class: "kv"},
+        h("dt", {}, "Etapa mais longa"), h("dd", {}, s.longest ? `${s.longest.flight_number || "voo"} ${s.longest.adep}–${s.longest.ades} · ${Math.floor(s.longest.min / 60)}h${String(s.longest.min % 60).padStart(2, "0")}` : "—"),
+        h("dt", {}, "Dia mais cheio"), h("dd", {}, s.busiest_day ? `${dmy(s.busiest_day.date)} · ${s.busiest_day.legs} pernas` : "—"),
+        h("dt", {}, "Voo que mais se repete"), h("dd", {}, s.top_flights && s.top_flights[0] ? `${s.top_flights[0].key} · ${s.top_flights[0].n}×` : "—"),
+        s.extra ? [h("dt", {}, "Como extra"), h("dd", {}, `${s.extra} perna(s)`)] : null))),
+    h("p", {class: "fine", style: "margin-top:14px"}, d.note));
+});
+
+/* ───────────────────────── faixa de instrumentos (3.0.1) ─────────────────────────
+   Como a faixa de cima de um painel de voo: hora UTC e local correndo, a próxima apresentação com contagem regressiva e
+   o próximo voo. Dados de /api/today (no máximo uma busca por minuto); a hora corre no navegador. */
+const hud = {data: null, at: 0, busy: false};
+function hudStrip() {
+  const el = h("div", {class: "hud", role: "status", "aria-live": "off"});
+  const cell = (label, ...v) => h("div", {class: "hud-cell"}, h("span", {class: "hud-l"}, label), h("span", {class: "hud-v"}, ...v));
+  const pad = n => String(n).padStart(2, "0");
+  const target = () => {
+    const d = hud.data; if (!d) return null;
+    const now = Date.now();
+    const rep = d.duty && d.duty.report_utc && Date.parse(d.duty.report_utc) > now ? {utc: d.duty.report_utc, at: d.legs && d.legs[0] ? d.legs[0].adep : null}
+      : d.next_duty && d.next_duty.report_utc ? {utc: d.next_duty.report_utc, at: d.next_duty.at && d.next_duty.at.icao} : null;
+    return rep;
+  };
+  const tick = () => {
+    if (!el.isConnected) return clearInterval(t);
+    const n = new Date(), z = `${pad(n.getUTCHours())}:${pad(n.getUTCMinutes())}:${pad(n.getUTCSeconds())}`;
+    const loc = `${pad(n.getHours())}:${pad(n.getMinutes())}`;
+    const rep = target(), nf = hud.data && hud.data.next_flight;
+    let cd = null, cls = "";
+    if (rep) {
+      const m = Math.round((Date.parse(rep.utc) - n.getTime()) / 60000);
+      if (m >= 0) { cd = m >= 1440 ? `${Math.floor(m / 1440)}d ${pad(Math.floor(m % 1440 / 60))}h` : `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; cls = m < 120 ? " warn" : ""; }
+    }
+    put(el,
+      cell("UTC", h("b", {class: "hud-clock"}, z)),
+      cell("Local", h("b", {}, loc)),
+      cell("Próxima apresentação", rep ? h("b", {class: "hud-cd" + cls}, cd ? `T−${cd}` : "agora") : h("b", {class: "dim"}, "sem escala"),
+        rep ? h("small", {}, `${dt(rep.utc)}${rep.at ? " · " + rep.at : ""}`) : null),
+      nf ? cell("Próximo voo", h("b", {}, nf.flight_number || "voo"), h("small", {}, `${nf.adep} → ${nf.ades}${nf.registration ? " · " + nf.registration : ""}`)) : null,
+      hud.data && hud.data.live ? cell("Em voo", h("b", {class: "hud-live"}, hud.data.live.flight_number || "ACARS"), h("small", {}, hud.data.live.phase || "")) : null);
+  };
+  const load = async () => {
+    if (hud.busy || Date.now() - hud.at < 60000) return;
+    hud.busy = true;
+    try { hud.data = await get("/api/today"); hud.at = Date.now(); } catch (e) { /* a hora segue sem os dados */ } finally { hud.busy = false; }
+    tick();
+  };
+  const t = setInterval(() => { tick(); if (Date.now() - hud.at >= 60000) load(); }, 1000);
+  tick(); load();
+  return el;
+}
 
 /* ───────────────────────── paleta de comandos (Ctrl+K) e atalhos ───────────────────────── */
 const pal = {fleet: null};
@@ -3159,6 +3251,18 @@ async function togglePayroll(on) {
 }
 
 /* ───────────────────────── ajustes ───────────────────────── */
+function statsSharePanel() {
+  const box = h("div", {class: "panel"}, h("h2", {}, "Estatísticas do projeto"), skeleton("s"));
+  get("/api/estatisticas/envio").then(s => {
+    const cb = h("input", {type: "checkbox", checked: s.enabled});
+    cb.addEventListener("change", async () => { const r = await act(() => api("PUT", "/api/estatisticas/envio", {enabled: cb.checked}), cb.checked ? "Envio ligado" : "Envio desligado"); if (!r) cb.checked = !cb.checked; });
+    put(box, h("h2", {}, "Estatísticas do projeto"),
+      h("label", {class: "ck"}, cb, "Enviar o resumo de cada escala gerada para as estatísticas da LineOps"),
+      h("p", {class: "fine"}, "Vai só o resumo da escala: companhia, tipo, base, período, número de pernas, horas, aeroportos e rotas mais usados, a versão e um código aleatório desta instalação (",
+        h("span", {class: "mono"}, s.install), "). Não vai nome de usuário, senha, e-mail nem IP. Desligado, nada sai."));
+  }).catch(() => box.remove());
+  return box;
+}
 function profilePanel() {
   const name = h("input", {value: me.display_name || "", maxlength: 40});
   const file = h("input", {type: "file", accept: "image/jpeg,image/png,image/webp", hidden: true});
@@ -3222,6 +3326,7 @@ view("ajustes", async main => {
           h("td", {class: "muted"}, b.source_name || "—"), h("td", {class: "t"}, "v" + (b.source_version || "?")),
           h("td", {class: "n"}, `${b.stats.legs_new || 0} novas`), h("td", {class: "n"}, `${b.stats.legs_changed || 0} alteradas`))))))) : null),
     profilePanel(),
+    statsSharePanel(),
     me && me.features && me.features.pernoite_discord ? discordPanel() : null,
     h("div", {class: "panel"}, h("h2", {}, "Acesso do ACARS"),
       h("p", {class: "muted"}, "O cliente ACARS usa um token próprio: envia dados de voo e não administra nada. Revogue se perder o computador."),
@@ -3288,7 +3393,13 @@ view("ajustes", async main => {
 
 /* ───────────────────────── início ───────────────────────── */
 /* o que há de novo: uma vez por versão, depois de atualizar */
-const NEWS = {"3.0.0": [
+const NEWS = {"3.0.1": [
+  ["Cabine noturna", "Visual novo: base azul-noite de painel de voo, as cores de aviônica com o significado da cabine (ciano = dado vivo, verde = ok, âmbar = atenção, vermelho = alerta) e a faixa de instrumentos no topo de toda tela, com hora UTC e local, a próxima apresentação em contagem regressiva e o próximo voo."],
+  ["Estatísticas", "Tela nova: aeroportos mais usados, rotas, onde você mais pernoita, partidas por hora, etapa mais longa e dia mais cheio. Da escala ou do diário, do mês ou de tudo."],
+  ["Aviso de pernoite para todos", "A caixa “ESSE VOO É PERNOITE” e o envio para o Discord, que eram só do cmdt079, agora valem para qualquer usuário."],
+  ["Escalas geradas nas estatísticas do projeto", "Cada escala gerada manda um resumo anônimo (companhia, tipo, base, período, pernas, horas, aeroportos e rotas mais usados) para as estatísticas da LineOps. Sem nome de usuário, e-mail nem IP. Dá para desligar em Ajustes."],
+  ["Muito mais tripulação", "Mais de mil nomes fictícios de copilotos e comissários."]],
+  "3.0.0": [
   ["Escala mais rápida e mais certa", "Uma leitura só da escala para todas as telas, índices novos no banco e o app compactado (gzip): as telas abrem mais rápido e o painel de limites, as trocas, o mês e a exportação veem exatamente as mesmas pernas."],
   ["Paleta de comandos", "Ctrl + K (ou Buscar, na barra lateral): telas, ações, um dia (12/11) ou uma matrícula. Na Escala, ← → mudam o dia, T volta para hoje, D/S/M trocam o modo. ? mostra os atalhos."],
   ["Escala na sua agenda", "Escala → Texto → Agenda (.ics): Google Agenda, Outlook ou o calendário do celular, com folga, reserva e sobreaviso como dias inteiros."],

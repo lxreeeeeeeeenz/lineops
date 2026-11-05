@@ -10,6 +10,24 @@ RPL do CGNA (AZU, GLO, TAM) ─▶ motor do AeroScale 2.2.4 ─▶ carreira (GOL
   toda semana                   (dentro da LineOps)          diário, salário, equipe
 ```
 
+## Novidades da 3.0.1
+
+* **Cabine noturna (visual novo).**
+  * Base azul-noite de painel de voo, com uma grade de carta quase invisível atrás das telas.
+  * As cores de aviônica têm o significado da cabine: ciano é dado vivo, verde é ok, âmbar é atenção e vermelho é alerta.
+    A cor da companhia continua nos botões e na navegação.
+  * **Faixa de instrumentos** no topo de toda tela: hora UTC e local correndo, a próxima apresentação em contagem
+    regressiva (âmbar a menos de 2 h), o próximo voo e o voo em andamento.
+* **Estatísticas** (tela nova): aeroportos mais usados (total, partidas e chegadas), rotas, onde você mais pernoita,
+  partidas por hora local, etapa mais longa, dia mais cheio e o voo que mais se repete. Vale para a escala (o
+  programado) ou o diário (o voado), no mês ou no período todo.
+* **O que era só do cmdt079 agora é de todos:** a caixa "ESSE VOO É PERNOITE" e o envio para o Discord (Ajustes ›
+  Discord). A foto fixa do cmdt079 continua só como a foto padrão dele.
+* **Escalas geradas nas estatísticas do projeto:** cada escala gerada manda um resumo anônimo para a webhook do
+  projeto. Vai companhia, tipo, base, período, pernas, horas, aeroportos e rotas mais usados, a versão e um código
+  aleatório da instalação. Não vai nome de usuário, e-mail nem IP. Para desligar: Ajustes › Estatísticas do projeto.
+* **Muito mais tripulação:** 318 nomes de copiloto e 724 de comissário, todos fictícios.
+
 ## Novidades da 3.0
 
 **Mais rápida e mais certa**
@@ -362,7 +380,7 @@ como senha (no ntfy.sh, tópicos são públicos para quem souber o nome).
 (mesma Wi-Fi ou uma VPN como o Tailscale). Informe o endereço do PC em "Endereço do LineOps para os links".
 
 ## Instalar como app do Windows (recomendado)
-1. Rode **`LineOps-Setup-3.0.0.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
+1. Rode **`LineOps-Setup-3.0.1.exe`**. O instalador cria atalhos no menu Iniciar (LineOps e LineOps ACARS) e, se você marcar,
    inicia com o Windows e libera o acesso pela rede de casa no firewall (só em redes privadas).
    Sem assinatura digital, o Windows pode mostrar “O Windows protegeu o computador”: **Mais informações → Executar assim mesmo**.
 2. Abra o **LineOps**: ele abre numa janela própria e fica com um ícone na **bandeja**, perto do relógio. Fechar a janela não

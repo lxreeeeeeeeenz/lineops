@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
+from . import (DISCLAIMER, __version__, acars_service as acars, aeroscale_import, avatar, backup, conquistas, estatisticas, exportar, fleet, frota_ref, pernoite, senha, legacy, flights, journey,
                careers, carreira, enroute, equipe, externos, feed, ivao, motor, notify, stay, tripulacao, loadsheet as ls_mod, logs, validity, manual, network, ofp as ofp_mod, payroll, pireps, rules, security, troca, posicao, visao)
 from .db import audit, connect, migrate, now_iso, one, pending, rows, tx
 from .errors import FGVError, NotFound
@@ -778,8 +778,22 @@ def create_app(data_dir: str | Path) -> FastAPI:
         return {"status": motor.status(data_dir, u["career"]), "options": motor.options(data_dir, u["career"])}
 
     @app.post("/api/motor/gerar")
-    def motor_generate(b: dict = Body(...), u=Depends(session_only)):
-        return motor.generate(data_dir, u["career"], b, careers.career_path(data_dir, u["career"]), user_id=u["id"])
+    def motor_generate(b: dict = Body(...), u=Depends(session_only), core=Depends(get_core)):
+        return motor.generate(data_dir, u["career"], b, careers.career_path(data_dir, u["career"]), user_id=u["id"],
+                              share_stats=estatisticas.share_enabled(core))
+
+    # ----------------------------------------------------------------- estatísticas
+    @app.get("/api/estatisticas")
+    def stats(inicio: str = None, fim: str = None, u=Depends(auth), conn=Depends(get_db)):
+        return estatisticas.compute(conn, inicio, fim)
+
+    @app.get("/api/estatisticas/envio")
+    def stats_share(u=Depends(auth), core=Depends(get_core)):
+        return {"enabled": estatisticas.share_enabled(core), "install": estatisticas.install_id(core)}
+
+    @app.put("/api/estatisticas/envio")
+    def stats_share_set(b: dict = Body(...), u=Depends(session_only), core=Depends(get_core)):
+        return {"enabled": estatisticas.set_share(core, bool(b.get("enabled"))), "install": estatisticas.install_id(core)}
 
     @app.post("/api/motor/padrao")
     def motor_defaults(b: dict = Body(...), u=Depends(session_only)):

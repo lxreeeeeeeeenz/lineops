@@ -103,9 +103,7 @@ def test_discord_overnight_only_for_cmdt079(eng, tmp_path):  # noqa: F811
     c = db.connect(p)
     core = c                                                                         # mesma tabela setting serve de núcleo no teste
     friend, other = {"id": 1, "username": "CMDT079", "display_name": "Cmdt 079"}, {"id": 2, "username": "piloto"}
-    assert pernoite.enabled_for(friend) and not pernoite.enabled_for(other)
-    with pytest.raises(FGVError):
-        pernoite.webhook_info(core, other)
+    assert pernoite.enabled_for(friend) and pernoite.enabled_for(other) and not pernoite.enabled_for(None)   # 3.0.1: todos
     with pytest.raises(FGVError):
         pernoite.set_webhook(core, friend, "https://example.com/hook")
     info = pernoite.webhook_info(core, friend)
@@ -117,8 +115,6 @@ def test_discord_overnight_only_for_cmdt079(eng, tmp_path):  # noqa: F811
     c.execute("INSERT INTO airport_info(icao, hotel, updated_at) VALUES (?, 'Hotel da lista', '2026-11-01T00:00:00Z')", (leg["ades"],))
     c.commit()
     fake = FakeDiscord()
-    with pytest.raises(FGVError):
-        pernoite.mark(c, core, other, leg["id"], opener=fake)
     r = pernoite.mark(c, core, friend, leg["id"], opener=fake, color=0xFF6A13)
     assert r["ok"] and r["detected"]
     meth, url, body = fake.calls[-1]

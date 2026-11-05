@@ -9,7 +9,7 @@
    do máximo de dias seguidos. Folga pedida, folga fixa do dia da semana, indisponibilidade e reserva não mudam: o
    pedido fica como não atendido e o diagnóstico diz por quê. Nunca se inventa voo para cumprir o pedido.
 
-2) AVISO NO DISCORD (só para o usuário cmdt079). A caixa "ESSE VOO É PERNOITE" no dia da escala manda para uma webhook do
+2) AVISO NO DISCORD (para todos os usuários desde a 3.0.1; antes, só o cmdt079). A caixa "ESSE VOO É PERNOITE" no dia da escala manda para uma webhook do
    Discord: voo, trecho, data, chegada (hora local), cidade do pernoite, próxima apresentação e hotel (o que você
    cadastrou em Ajustes › Pernoites; sem cadastro, a mensagem diz que falta). Desmarcar apaga a mensagem.
 """
@@ -89,7 +89,7 @@ def results(diagnostics: list[dict]) -> dict:
 
 
 # ================================================================== 2) aviso de pernoite no Discord
-DISCORD_USERS = {"cmdt079"}            # quem vê a caixa "ESSE VOO É PERNOITE" (pedido do dono da instalação)
+# 3.0.1: a caixa "ESSE VOO É PERNOITE" vale para todo usuário (antes era só do cmdt079)
 WEBHOOK_KEY = "discord_pernoite_webhook"
 # a webhook padrão (pedido do dono da instalação): vale enquanto você não cadastrar outra em Ajustes › Discord
 DEFAULT_WEBHOOK = ("https://discord.com/api/webhooks/1567661679636906056/"
@@ -99,7 +99,7 @@ UA = f"LineOps/{__version__} (virtual airline pessoal, self-hosted)"
 
 
 def enabled_for(user: dict | None) -> bool:
-    return bool(user) and (user.get("username") or "").strip().lower() in DISCORD_USERS
+    return bool(user and user.get("id") is not None)
 
 
 def _require(user):

@@ -77,3 +77,53 @@ def test_profile_photo(tmp_path):
     assert avatar.of(cm, tmp_path).name == "cmdt079.jpg"                              # sem foto enviada: a fixa dele
     avatar.save(cm, tmp_path, b"\x89PNG\r\n\x1a\n" + b"1" * 10)
     assert avatar.of(cm, tmp_path).name == "8.png"                                    # a enviada vale mais
+
+
+def test_statistics_and_generated_report(eng, tmp_path):  # noqa: F811
+    import io
+    import json as _j
+
+    from lineops import estatisticas
+    data, career = eng
+    res = _run(data, career, {**BASE, "seed": 3})
+    c = db.connect(career)
+    st = estatisticas.compute(c, "2026-11-01", "2026-11-30")
+    r = st["roster"]
+    legs = [l for l in escala.legs(c, "2026-11-01", "2026-11-30") if l["activity"] not in ("SOBREAVISO", "EXTRA")]
+    assert r["legs"] == len(legs) and sum(r["by_hour"]) == len(legs)
+    assert r["top_airports"][0]["n"] == max(sum(1 for l in legs for x in (l["adep"], l["ades"]) if x == a["icao"]) for a in r["top_airports"])
+    assert st["flown"]["legs"] == 0
+    p = estatisticas.generated_payload(c, "GLO", res, {"icao_type": "B738", "base": "SBGR", "kind": "mensal"}, "abc123")
+    txt = _j.dumps(p, ensure_ascii=False)
+    assert "abc123" in txt and "Aeroportos mais usados" in txt and p["allowed_mentions"] == {"parse": []}
+    c.close()
+    core = db.connect(tmp_path / "core.db")
+    db.migrate(core)
+    sent = []
+
+    class R(io.BytesIO):
+        status = 204
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def opener(req, timeout=None):
+        sent.append(_j.loads(req.data.decode()))
+        return R(b"")
+    estatisticas.send_generated(tmp_path / "core.db", career, "GLO", res, {"icao_type": "B738"}, opener=opener, wait=True)
+    assert len(sent) == 1 and "piloto" not in _j.dumps(sent[0])                     # sem nome de usuário
+    inst = estatisticas.install_id(core)
+    assert inst and estatisticas.install_id(core) == inst                           # o mesmo código sempre
+    estatisticas.set_share(core, False)
+    estatisticas.send_generated(tmp_path / "core.db", career, "GLO", res, {"icao_type": "B738"}, opener=opener, wait=True)
+    assert len(sent) == 1                                                            # desligado: nada sai
+    core.close()
+
+
+def test_more_crew_names():
+    from lineops import tripulacao
+    assert len(set(tripulacao.FO_NAMES)) >= 300 and len(set(tripulacao.CABIN_NAMES)) >= 700
+    assert not set(tripulacao.FO_NAMES) & set(tripulacao.CABIN_NAMES)
